@@ -64,6 +64,14 @@ func main() {
 	})
 	center := object.Min().Mid(object.Max())
 
+	log.Println("Writing metadata...")
+	globalMetadataPath := filepath.Join(outputDir, "metadata.json")
+	f, err := os.Create(globalMetadataPath)
+	essentials.Must(err)
+	globalMetadata := map[string]interface{}{"min": object.Min().Array(), "max": object.Max().Array()}
+	essentials.Must(json.NewEncoder(f).Encode(globalMetadata))
+	f.Close()
+
 	log.Println("Creating random lights...")
 	lights := []*render3d.PointLight{}
 	for i := 0; i < numLights; i++ {
@@ -90,11 +98,12 @@ func main() {
 
 		metaPath := filepath.Join(outputDir, fmt.Sprintf("%04d.json", i))
 		metadata := map[string]interface{}{
-			"origin": camera.Origin,
-			"x":      camera.ScreenX,
-			"y":      camera.ScreenY,
-			"z":      camera.ScreenX.Cross(camera.ScreenY).Normalize(),
-			"fov":    camera.FieldOfView,
+			"origin": camera.Origin.Array(),
+			"x":      camera.ScreenX.Array(),
+			"y":      camera.ScreenY.Array(),
+			"z":      camera.ScreenX.Cross(camera.ScreenY).Normalize().Array(),
+			"x_fov":  camera.FieldOfView,
+			"y_fov":  camera.FieldOfView,
 		}
 		f, err := os.Create(metaPath)
 		essentials.Must(err)
