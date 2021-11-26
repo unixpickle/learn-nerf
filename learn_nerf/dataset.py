@@ -1,4 +1,5 @@
 import json
+import math
 import os
 from dataclasses import dataclass
 from typing import List, Tuple
@@ -17,7 +18,44 @@ class NeRFView:
     y_axis: Vec3
     x_fov: float
     y_fov: float
-    image: jnp.ndarray
+    image_path: str
+
+    def image(self) -> jnp.ndarray:
+        """
+        Load the image as a [Height x Width x 3] array of uint8 RGB values.
+        """
+        return jnp.array(Image.open(self.image_path).convert("RGB"))
+
+    def rays(self) -> jnp.ndarray:
+        """
+        Get all of the rays in the view with their corresponding colors as a
+        single compact array.
+
+        Returns an array of shape [N x 3 x 3] where each [3 x 3] element is a
+        row-major tuple (origin, direction, color). Colors are stored as RGB
+        values in the range [-1, 1].
+        """
+        img = self.image()
+        z = jnp.array(self.camera_direction, dtype=jnp.float32) / math.tan(
+            (math.pi / 180) * self.fov / 2
+        )
+        ys = jnp.linspace(-1, 1, num=img.shape[0])[:, None, None] * jnp.array(
+            self.y_axis, dtype=jnp.float32
+        )
+        xs = jnp.linspace(-1, 1, num=img.shape[1])[None, :, None] * jnp.array(
+            self.x_axis, dtype=jnp.float32
+        )
+        directions = jnp.reshape(xs + ys + z, [-1, 3])
+        directions = directions / jnp.linalg.norm(directions, axis=-1, keepdims=True)
+        origins = jnp.reshape(
+            jnp.tile(
+                jnp.array(self.camera_origin, dtype=jnp.float32)[None, None],
+                img.shape[:2] + [1],
+            ),
+            [-1, 3],
+        )
+        colors = jnp.reshape(img, [-1, 3]).astype(jnp.float32) / 127.5 - 1
+        return jnp.concatenate([origins, directions, colors], axis=1)
 
 
 @dataclass
@@ -51,7 +89,6 @@ def load_dataset(directory: str) -> NeRFDataset:
         json_path = img_path[: -len(".png")] + ".json"
         with open(json_path, "rb") as f:
             camera_info = json.load(f)
-        image = jnp.array(Image.open(img_path))
         dataset.views.append(
             NeRFView(
                 camera_direction=tuple(camera_info["z"]),
@@ -60,7 +97,7 @@ def load_dataset(directory: str) -> NeRFDataset:
                 y_axis=tuple(camera_info["y"]),
                 x_fov=float(camera_info["x_fov"]),
                 y_fov=float(camera_info["y_fov"]),
-                image=image,
+                image_path=img_path,
             )
         )
     return dataset
