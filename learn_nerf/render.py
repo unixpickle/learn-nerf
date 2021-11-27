@@ -27,7 +27,7 @@ def stratified_sampling(
     return randoms + midpoints
 
 
-def render_ray(
+def render_rays(
     ts: jnp.ndarray,
     t_min: jnp.ndarray,
     densities: jnp.ndarray,
@@ -35,7 +35,8 @@ def render_ray(
     background: jnp.ndarray,
 ) -> jnp.ndarray:
     """
-    Perform volumetric rendering given density and color samples along a ray.
+    Perform volumetric rendering given density and color samples along a batch
+    of rays.
 
     :param ts: an [N x T] batch of ts.
     :param t_min: a scalar array containing the minimum t value.
