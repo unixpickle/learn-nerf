@@ -20,8 +20,8 @@ func main() {
 	var resolution int
 	var numImages int
 	var numLights int
-	var red float64
 	var lightBrightness float64
+	var red float64
 	var green float64
 	var blue float64
 	flag.Float64Var(&fov, "fov", 60.0, "field of view in degrees")
