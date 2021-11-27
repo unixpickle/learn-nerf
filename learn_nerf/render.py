@@ -50,7 +50,7 @@ def render_ray(
 
 def fine_sampling(
     count: int,
-    key: jax.numpy.PRNGKey,
+    key: jax.random.PRNGKey,
     ts: jnp.ndarray,
     t_min: jnp.ndarray,
     t_max: jnp.ndarray,
