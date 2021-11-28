@@ -52,7 +52,7 @@ class TrainLoop:
         os.rename(tmp_path, path)
 
     def step_fn(
-        self, t_min: jnp.ndarray, t_max: jnp.ndarary, background: jnp.ndarray
+        self, t_min: jnp.ndarray, t_max: jnp.ndarray, background: jnp.ndarray
     ) -> Callable[[jax.random.PRNGKey, jnp.ndarray], Dict[str, jnp.ndarray]]:
         """
         Create a function that steps in place and returns a logging dict.
@@ -64,7 +64,7 @@ class TrainLoop:
         ) -> Tuple[train_state.TrainState, Dict[str, jnp.ndarray]]:
             loss_fn = partial(self.losses, key, t_min, t_max, background, batch)
             grad, values = jax.grad(loss_fn, has_aux=True)(state.params)
-            return state.apply_gradients(grad), values
+            return state.apply_gradients(grads=grad), values
 
         def in_place_step(
             key: jax.random.PRNGKey, batch: jnp.ndarray
@@ -78,7 +78,7 @@ class TrainLoop:
         self,
         key: jax.random.PRNGKey,
         t_min: jnp.ndarray,
-        t_max: jnp.ndarary,
+        t_max: jnp.ndarray,
         background: jnp.ndarray,
         batch: jnp.ndarray,
         params: VariableDict,
@@ -105,7 +105,7 @@ class TrainLoop:
             all_points.reshape([-1, 3]),
             direction_batch.reshape([-1, 3]),
         )
-        coarse_densities = coarse_densities.reshape(all_points.shape)
+        coarse_densities = coarse_densities.reshape(all_points.shape[:-1])
         coarse_rgbs = coarse_rgbs.reshape(all_points.shape)
         coarse_outputs = coarse_ts.render_rays(
             coarse_densities, coarse_rgbs, background
@@ -123,7 +123,7 @@ class TrainLoop:
             all_points.reshape([-1, 3]),
             direction_batch.reshape([-1, 3]),
         )
-        fine_densities = fine_densities.reshape(all_points.shape)
+        fine_densities = fine_densities.reshape(all_points.shape[:-1])
         fine_rgbs = fine_rgbs.reshape(all_points.shape)
         fine_outputs = fine_ts.render_rays(fine_densities, fine_rgbs, background)
         fine_loss = jnp.mean((fine_outputs - targets) ** 2)
