@@ -136,6 +136,30 @@ class NeRFDataset:
             if cur_batch.shape[0]:
                 yield cur_batch
 
+    def t_bounds(self) -> Tuple[float, float]:
+        t_min = math.inf
+        t_max = -math.inf
+
+        corners = [
+            (self.bbox_min[0], self.bbox_min[1], self.bbox_min[2]),
+            (self.bbox_max[0], self.bbox_min[1], self.bbox_min[2]),
+            (self.bbox_min[0], self.bbox_max[1], self.bbox_min[2]),
+            (self.bbox_min[0], self.bbox_min[1], self.bbox_max[2]),
+            (self.bbox_min[0], self.bbox_max[1], self.bbox_max[2]),
+            (self.bbox_max[0], self.bbox_min[1], self.bbox_max[2]),
+            (self.bbox_max[0], self.bbox_max[1], self.bbox_min[2]),
+            (self.bbox_max[0], self.bbox_max[1], self.bbox_max[2]),
+        ]
+
+        for view in self.views:
+            origin = view.camera_origin
+            for corner in corners:
+                dist = math.sqrt(sum((x1 - x2) ** 2 for x1, x2 in zip(corner, origin)))
+                t_min = min(t_min, dist)
+                t_max = max(t_max, dist)
+
+        return t_min, t_max
+
 
 def load_dataset(directory: str) -> NeRFDataset:
     """
