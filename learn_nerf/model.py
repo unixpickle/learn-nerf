@@ -7,21 +7,12 @@ class NeRFModel(nn.Module):
     A model architecture based directly on Mildenhall et al. (2020).
     """
 
-    def __init__(
-        self,
-        input_layers: int = 5,
-        mid_layers: int = 4,
-        hidden_dim: int = 256,
-        color_layer_dim: int = 128,
-        x_freqs: int = 10,
-        d_freqs: int = 4,
-    ):
-        self.input_layers = input_layers
-        self.mid_layers = mid_layers
-        self.hidden_dim = hidden_dim
-        self.color_layer_dim = color_layer_dim
-        self.x_freqs = x_freqs
-        self.d_freqs = d_freqs
+    input_layers: int = 5
+    mid_layers: int = 4
+    hidden_dim: int = 256
+    color_layer_dim: int = 128
+    x_freqs: int = 10
+    d_freqs: int = 4
 
     @nn.compact
     def __call__(self, x: jnp.ndarray, d: jnp.ndarray) -> jnp.ndarray:
@@ -56,4 +47,4 @@ def sinusoidal_emb(coords: jnp.ndarray, freqs: int) -> jnp.ndarray:
     sines = jnp.sin(inputs)
     cosines = jnp.cos(inputs)
     combined = jnp.concatenate([sines, cosines], axis=-1)
-    return combined.reshape(combined.shape[:, :-2] + (-1,))
+    return combined.reshape(combined.shape[:-2] + (-1,))
