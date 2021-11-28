@@ -23,9 +23,9 @@ class TrainLoop:
         coarse: NeRFModel,
         fine: NeRFModel,
         init_rng: jax.random.PRNGKey,
-        lr: float = 1e-4,
-        coarse_ts: int = 64,
-        fine_ts: int = 128,
+        lr: float,
+        coarse_ts: int,
+        fine_ts: int,
     ):
         self.coarse = coarse
         self.fine = fine

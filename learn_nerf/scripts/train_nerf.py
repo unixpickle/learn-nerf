@@ -47,7 +47,14 @@ def main():
     print("creating model and train loop...")
     coarse = NeRFModel()
     fine = NeRFModel()
-    loop = TrainLoop(coarse, fine, init_rng=init_key)
+    loop = TrainLoop(
+        coarse,
+        fine,
+        init_rng=init_key,
+        lr=args.lr,
+        coarse_ts=args.coarse_samples,
+        fine_ts=args.fine_samples,
+    )
     step_fn = loop.step_fn(
         jnp.array(t_min), jnp.array(t_max), jnp.array([0.0, 0.0, 0.0])
     )
