@@ -62,7 +62,7 @@ class RaySamples:
         """
         probs = self.termination_probs(densities)
         colors = jnp.concatenate(
-            [rgbs, jnp.tile(background[None], [rgbs.shape[0], 1])], axis=1
+            [rgbs, jnp.tile(background[None, None], [rgbs.shape[0], 1, 1])], axis=1
         )
         return jnp.sum(probs[..., None] * colors, axis=1)
 
