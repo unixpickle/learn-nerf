@@ -35,6 +35,16 @@ class RaySamples:
         randoms = jax.random.uniform(key, (batch_size, count), maxval=bin_size)
         return cls(t_min=t_min, t_max=t_max, ts=randoms + midpoints)
 
+    def points(self, rays: jnp.ndarray) -> jnp.ndarray:
+        """
+        For each ray, compute the points at all ts.
+
+        :param rays: a batch of rays of shape [N x 2 x 3] where each ray is a
+                     tuple (origin, direction).
+        :return: a batch of points of shape [N x T x 3].
+        """
+        return rays[:, :1] + (rays[:, 1:] * self.ts[:, :, None])
+
     def render_rays(
         self,
         densities: jnp.ndarray,
@@ -85,9 +95,6 @@ class RaySamples:
             axis=1,
         )
 
-        print("xs", xs)
-        print("ys", ys)
-
         # Evaluate the inverse CDF at quasi-random points.
         input_samples = self.stratified_sampling(
             batch_size=self.ts.shape[0],
@@ -96,7 +103,6 @@ class RaySamples:
             t_min=jnp.array(0.0),
             t_max=jnp.array(1.0),
         )
-        print(input_samples.ts)
         new_ts = jax.vmap(jnp.interp)(input_samples.ts, xs, ys)
 
         if combine:
