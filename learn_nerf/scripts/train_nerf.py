@@ -16,7 +16,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--batch_size", type=int, default=128, help="rays per batch")
+    parser.add_argument("--batch_size", type=int, default=4096, help="rays per batch")
     parser.add_argument(
         "--coarse_samples", type=int, default=64, help="samples per coarse ray"
     )
