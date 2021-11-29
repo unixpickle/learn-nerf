@@ -10,7 +10,7 @@ from flax.core.scope import VariableDict
 from flax.training import train_state
 
 from .model import NeRFModel
-from .render import RaySamples
+from .render import NeRFRenderer
 
 
 class TrainLoop:
@@ -93,48 +93,21 @@ class TrainLoop:
         """
         Compute losses and a logging dict for a given batch and settings.
         """
-        rays = batch[:, :2]
-        targets = batch[:, 2]
-        coarse_key, fine_key = jax.random.split(key)
-
-        # Evaluate the coarse model using regular stratified sampling.
-        coarse_ts = RaySamples.stratified_sampling(
-            batch_size=batch.shape[0],
-            count=self.coarse_ts,
-            key=coarse_key,
+        renderer = NeRFRenderer(
+            coarse=self.coarse,
+            fine=self.fine,
+            coarse_params=params["coarse"],
+            fine_params=params["fine"],
+            background=background,
             t_min=t_min,
             t_max=t_max,
+            coarse_ts=self.coarse_ts,
+            fine_ts=self.fine_ts,
         )
-        all_points = coarse_ts.points(rays)
-        direction_batch = jnp.tile(rays[:, 1:2], [1, all_points.shape[1], 1])
-        coarse_densities, coarse_rgbs = self.coarse.apply(
-            dict(params=params["coarse"]),
-            all_points.reshape([-1, 3]),
-            direction_batch.reshape([-1, 3]),
-        )
-        coarse_densities = coarse_densities.reshape(all_points.shape[:-1])
-        coarse_rgbs = coarse_rgbs.reshape(all_points.shape)
-        coarse_outputs = coarse_ts.render_rays(
-            coarse_densities, coarse_rgbs, background
-        )
-        coarse_loss = jnp.mean((coarse_outputs - targets) ** 2)
 
-        # Evaluate the fine model using a combined set of points.
-        fine_ts = coarse_ts.fine_sampling(
-            count=self.fine_ts,
-            key=fine_key,
-            densities=jax.lax.stop_gradient(coarse_densities),
-        )
-        all_points = fine_ts.points(rays)
-        direction_batch = jnp.tile(rays[:, 1:2], [1, all_points.shape[1], 1])
-        fine_densities, fine_rgbs = self.fine.apply(
-            dict(params=params["fine"]),
-            all_points.reshape([-1, 3]),
-            direction_batch.reshape([-1, 3]),
-        )
-        fine_densities = fine_densities.reshape(all_points.shape[:-1])
-        fine_rgbs = fine_rgbs.reshape(all_points.shape)
-        fine_outputs = fine_ts.render_rays(fine_densities, fine_rgbs, background)
-        fine_loss = jnp.mean((fine_outputs - targets) ** 2)
+        predictions = renderer.render_rays(key, batch[:, :2])
+        targets = batch[:, 2]
+        coarse_loss = jnp.mean((predictions["coarse"] - targets) ** 2)
+        fine_loss = jnp.mean((predictions["fine"] - targets) ** 2)
 
         return coarse_loss + fine_loss, dict(coarse=coarse_loss, fine=fine_loss)

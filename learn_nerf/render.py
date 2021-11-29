@@ -1,8 +1,89 @@
 from dataclasses import dataclass
-from typing import Union
+from typing import Any, Dict, Union
 
 import jax
 import jax.numpy as jnp
+
+from .model import NeRFModel
+
+
+@dataclass
+class NeRFRenderer:
+    """
+    A NeRF hierarchy with corresponding settings for rendering rays.
+
+    :param coarse: the coarse model.
+    :param fine: the fine model.
+    :param coarse_params: params of the coarse model.
+    :param fine_params: params of the fine model.
+    :param background: the [3] RGB array background color.
+    :param t_min: minimum t to sample.
+    :param t_max: maximum t to sample.
+    :param coarse_ts: samples per ray for coarse model.
+    :param fine_ts: additional samples per ray for fine model.
+    """
+
+    coarse: NeRFModel
+    fine: NeRFModel
+    coarse_params: Any
+    fine_params: Any
+    background: jnp.ndarray
+    t_min: jnp.ndarray
+    t_max: jnp.ndarray
+    coarse_ts: int
+    fine_ts: int
+
+    def render_rays(
+        self,
+        key: jax.random.PRNGKey,
+        batch: jnp.ndarray,
+    ) -> Dict[str, jnp.ndarray]:
+        """
+        :param key: an RNG key for sampling points along rays.
+        :param batch: an [N x 2 x 3] batch of (origin, direction) rays.
+        :return: a dict with "fine" and "coarse" keys mapping to [N x 3] arrays of
+                RGB colors.
+        """
+        coarse_key, fine_key = jax.random.split(key)
+        # Evaluate the coarse model using regular stratified sampling.
+        coarse_ts = RaySamples.stratified_sampling(
+            batch_size=batch.shape[0],
+            count=self.coarse_ts,
+            key=coarse_key,
+            t_min=self.t_min,
+            t_max=self.t_max,
+        )
+        all_points = coarse_ts.points(batch)
+        direction_batch = jnp.tile(batch[:, 1:2], [1, all_points.shape[1], 1])
+        coarse_densities, coarse_rgbs = self.coarse.apply(
+            dict(params=self.coarse_params),
+            all_points.reshape([-1, 3]),
+            direction_batch.reshape([-1, 3]),
+        )
+        coarse_densities = coarse_densities.reshape(all_points.shape[:-1])
+        coarse_rgbs = coarse_rgbs.reshape(all_points.shape)
+        coarse_outputs = coarse_ts.render_rays(
+            coarse_densities, coarse_rgbs, self.background
+        )
+
+        # Evaluate the fine model using a combined set of points.
+        fine_ts = coarse_ts.fine_sampling(
+            count=self.fine_ts,
+            key=fine_key,
+            densities=jax.lax.stop_gradient(coarse_densities),
+        )
+        all_points = fine_ts.points(batch)
+        direction_batch = jnp.tile(batch[:, 1:2], [1, all_points.shape[1], 1])
+        fine_densities, fine_rgbs = self.fine.apply(
+            dict(params=self.fine_params),
+            all_points.reshape([-1, 3]),
+            direction_batch.reshape([-1, 3]),
+        )
+        fine_densities = fine_densities.reshape(all_points.shape[:-1])
+        fine_rgbs = fine_rgbs.reshape(all_points.shape)
+        fine_outputs = fine_ts.render_rays(fine_densities, fine_rgbs, self.background)
+
+        return dict(coarse=coarse_outputs, fine=fine_outputs)
 
 
 @dataclass
