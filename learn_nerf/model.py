@@ -27,7 +27,7 @@ class NeRFModel(nn.Module):
             if i > 0:
                 z = nn.relu(z)
             z = nn.Dense(self.hidden_dim)(z)
-        density = jnp.log(1 + jnp.exp(nn.Dense(1)(z)))
+        density = nn.softplus(nn.Dense(1)(z))
         z = jnp.concatenate([z, d_emb], axis=-1)
         z = nn.relu(nn.Dense(self.color_layer_dim)(z))
         rgb = nn.tanh(nn.Dense(3)(z))

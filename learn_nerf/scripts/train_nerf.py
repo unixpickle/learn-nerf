@@ -56,7 +56,7 @@ def main():
         fine_ts=args.fine_samples,
     )
     step_fn = loop.step_fn(
-        jnp.array(t_min), jnp.array(t_max), jnp.array([0.0, 0.0, 0.0])
+        jnp.array(t_min), jnp.array(t_max), jnp.array([-1.0, -1.0, -1.0])
     )
 
     print("training...")
