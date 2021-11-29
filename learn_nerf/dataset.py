@@ -2,7 +2,7 @@ import json
 import math
 import os
 import tempfile
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from dataclasses import dataclass
 from typing import Iterator, List, Tuple
 
@@ -15,7 +15,7 @@ Vec3 = Tuple[float, float, float]
 
 
 @dataclass
-class NeRFView(ABC):
+class CameraView:
     camera_direction: Vec3
     camera_origin: Vec3
     x_axis: Vec3
@@ -23,6 +23,51 @@ class NeRFView(ABC):
     x_fov: float
     y_fov: float
 
+    @classmethod
+    def from_json(cls, path: str, **kwargs) -> "CameraView":
+        with open(path, "rb") as f:
+            camera_info = json.load(f)
+        return cls(
+            camera_direction=tuple(camera_info["z"]),
+            camera_origin=tuple(camera_info["origin"]),
+            x_axis=tuple(camera_info["x"]),
+            y_axis=tuple(camera_info["y"]),
+            x_fov=float(camera_info["x_fov"]),
+            y_fov=float(camera_info["y_fov"]),
+            **kwargs,
+        )
+
+    def bare_rays(self, width: int, height: int) -> jnp.ndarray:
+        """
+        Get all of the rays in the view in raster scan order.
+
+        Returns an [N x 2 x 3] array of (origin, direction) pairs.
+        """
+        z = jnp.array(self.camera_direction, dtype=jnp.float32)
+        ys = (
+            math.tan((math.pi / 180) * self.y_fov / 2)
+            * jnp.linspace(-1, 1, num=height)[:, None, None]
+            * jnp.array(self.y_axis, dtype=jnp.float32)
+        )
+        xs = (
+            math.tan((math.pi / 180) * self.x_fov / 2)
+            * jnp.linspace(-1, 1, num=width)[None, :, None]
+            * jnp.array(self.x_axis, dtype=jnp.float32)
+        )
+        directions = jnp.reshape(xs + ys + z, [-1, 3])
+        directions = directions / jnp.linalg.norm(directions, axis=-1, keepdims=True)
+        origins = jnp.reshape(
+            jnp.tile(
+                jnp.array(self.camera_origin, dtype=jnp.float32)[None, None],
+                (height, width, 1),
+            ),
+            [-1, 3],
+        )
+        return jnp.stack([origins, directions], axis=1)
+
+
+@dataclass
+class NeRFView(CameraView):
     @abstractmethod
     def image(self) -> jnp.ndarray:
         """
@@ -39,28 +84,9 @@ class NeRFView(ABC):
         values in the range [-1, 1].
         """
         img = self.image()
-        z = jnp.array(self.camera_direction, dtype=jnp.float32)
-        ys = (
-            math.tan((math.pi / 180) * self.y_fov / 2)
-            * jnp.linspace(-1, 1, num=img.shape[0])[:, None, None]
-            * jnp.array(self.y_axis, dtype=jnp.float32)
-        )
-        xs = (
-            math.tan((math.pi / 180) * self.x_fov / 2)
-            * jnp.linspace(-1, 1, num=img.shape[1])[None, :, None]
-            * jnp.array(self.x_axis, dtype=jnp.float32)
-        )
-        directions = jnp.reshape(xs + ys + z, [-1, 3])
-        directions = directions / jnp.linalg.norm(directions, axis=-1, keepdims=True)
-        origins = jnp.reshape(
-            jnp.tile(
-                jnp.array(self.camera_origin, dtype=jnp.float32)[None, None],
-                img.shape[:2] + (1,),
-            ),
-            [-1, 3],
-        )
+        bare = self.bare_rays(img.shape[1], img.shape[0])
         colors = jnp.reshape(img, [-1, 3]).astype(jnp.float32) / 127.5 - 1
-        return jnp.stack([origins, directions, colors], axis=1)
+        return jnp.concatenate([bare, colors[:, None]], axis=1)
 
 
 @dataclass
@@ -181,19 +207,7 @@ def load_dataset(directory: str) -> NeRFDataset:
             continue
         img_path = os.path.join(directory, img_name)
         json_path = img_path[: -len(".png")] + ".json"
-        with open(json_path, "rb") as f:
-            camera_info = json.load(f)
-        dataset.views.append(
-            FileNeRFView(
-                camera_direction=tuple(camera_info["z"]),
-                camera_origin=tuple(camera_info["origin"]),
-                x_axis=tuple(camera_info["x"]),
-                y_axis=tuple(camera_info["y"]),
-                x_fov=float(camera_info["x_fov"]),
-                y_fov=float(camera_info["y_fov"]),
-                image_path=img_path,
-            )
-        )
+        dataset.views.append(FileNeRFView.from_json(json_path, image_path=img_path))
     return dataset
 
 
