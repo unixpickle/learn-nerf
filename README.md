@@ -10,6 +10,7 @@ The steps to using this codebase are as follows:
 
  1. [Generate a dataset](#generating-a-dataset) - run a simple Go program to turn any `.stl` 3D model into a series of rendered camera views with associated metadata.
  2. [Train a model](#training-a-model) - install the Python dependencies and run the training script.
+ 3. [Render a novel view](#render-a-novel-view) - render a novel view of the object using a model.
 
 ## Generating a dataset
 
@@ -40,3 +41,7 @@ python learn_nerf/scripts/train_nerf \
 This will periodically save model weights to `model_weights.pkl`. The script may get stuck on `training...` while it shuffles the dataset and compiles the training graph. Wait a minute or two, and losses should start printing out as training ramps up.
 
 If you get a `Segmentation fault` on CPU, this may be because you don't have enough memory to run batch size 1024--try something lower.
+
+## Render a novel view
+
+This is a work-in-progress. Check back soon!
