@@ -1,7 +1,6 @@
 import json
 import math
 import os
-import tempfile
 from abc import abstractmethod
 from dataclasses import dataclass
 from typing import Iterator, List, Tuple
@@ -107,14 +106,16 @@ class NeRFDataset:
 
     def iterate_batches(
         self,
+        dir_path: str,
         key: jax.random.PRNGKey,
         batch_size: int,
         repeat: bool = True,
         num_shards: int = 32,
     ) -> Iterator[jnp.ndarray]:
         """
-        Load batches of colored rays from the dataset.
+        Load batches of colored rays from the dataset in a shuffled fashion.
 
+        :param dir_path: directory where the shuffled data is stored.
         :param key: the RNG seed for shuffling the data.
         :param batch_size: the number of rays to load per batch.
         :param repeat: if True, repeat the data after all rays have been
@@ -127,40 +128,8 @@ class NeRFDataset:
         :return: an iterator over [N x 3 x 3] batches of rays, where each ray
                  is a tuple (origin, direction, color).
         """
-        # Perform the Jane Street two-stage shuffle as described in:
-        # https://blog.janestreet.com/how-to-shuffle-a-big-dataset/.
-        with _ShardManager(num_shards) as shards:
-            # Stage 1: randomly assign rays to shards.
-            for view in self.views:
-                rays = view.rays()
-                key, this_key = jax.random.split(key)
-                assignments = jax.random.randint(
-                    this_key, [rays.shape[0]], 0, num_shards
-                )
-                for shard in range(num_shards):
-                    sub_batch = rays[assignments == shard]
-                    if sub_batch.shape[0]:
-                        shards.append_shard(shard, sub_batch)
-
-            # Stage 2: read shards, and shuffle within each shard.
-            cur_batch = None
-            while True:
-                for shard in range(num_shards):
-                    key, this_key = jax.random.split(key)
-                    shard_rays = jax.random.permutation(
-                        this_key, shards.read_shard(shard)
-                    )
-                    if cur_batch is not None:
-                        cur_batch = jnp.concatenate([cur_batch, shard_rays], axis=0)
-                    else:
-                        cur_batch = shard_rays
-                    while cur_batch.shape[0] >= batch_size:
-                        yield cur_batch[:batch_size]
-                        cur_batch = cur_batch[batch_size:]
-                if not repeat:
-                    break
-            if cur_batch.shape[0]:
-                yield cur_batch
+        with ShuffledDataset(dir_path, self, key) as sd:
+            yield from sd.iterate_batches(batch_size, repeat=repeat)
 
     def t_bounds(self) -> Tuple[float, float]:
         t_min = math.inf
@@ -187,6 +156,110 @@ class NeRFDataset:
         return t_min, t_max
 
 
+class ShuffledDataset:
+    """
+    A pre-shuffled version of the rays in a NeRFDataset.
+
+    Uses the Jane Street two-stage shuffle as described in:
+    https://blog.janestreet.com/how-to-shuffle-a-big-dataset/.
+
+    :param dir_path: the directory to store results.
+    :param dataset: the dataset to shuffle.
+    :param key: the RNG key for shuffling.
+    :param num_shards: the number of files to split rays into. More shards
+                       uses less memory but more file descriptors.
+    """
+
+    def __init__(
+        self,
+        dir_path: str,
+        dataset: NeRFDataset,
+        key: jax.random.PRNGKey,
+        num_shards: int = 32,
+    ):
+        self.num_shards = num_shards
+        self.shard_key, self.shuffle_key = jax.random.split(key)
+        if not os.path.exists(dir_path):
+            os.mkdir(dir_path)
+        done_path = os.path.join(dir_path, "done")
+        if os.path.exists(done_path):
+            self.fds = [
+                open(os.path.join(dir_path, f"{i}"), "rb") for i in range(num_shards)
+            ]
+        else:
+            self.fds = [
+                open(os.path.join(dir_path, f"{i}"), "wb+") for i in range(num_shards)
+            ]
+            self._create_shards(dataset)
+            with open(done_path, "wb+") as f:
+                f.write(b"done\n")
+
+    def iterate_batches(
+        self, batch_size: int, repeat: bool = False
+    ) -> Iterator[jnp.ndarray]:
+        """
+        Load batches of colored rays from the dataset.
+
+        :param batch_size: the number of rays to load per batch.
+        :param repeat: if True, repeat the data after all rays have been
+                       exhausted. If this is False, then the final batch may be
+                       smaller than batch_size.
+        :return: an iterator over [N x 3 x 3] batches of rays, where each ray
+                 is a tuple (origin, direction, color).
+        """
+        key = self.shuffle_key
+        cur_batch = None
+        while True:
+            key, this_key = jax.random.split(key)
+            shard_indices = np.array(
+                jax.random.permutation(this_key, jnp.arange(self.num_shards))
+            ).tolist()
+            for shard in shard_indices:
+                key, this_key = jax.random.split(key)
+                shard_rays = jax.random.permutation(this_key, self._read_shard(shard))
+                if cur_batch is not None:
+                    cur_batch = jnp.concatenate([cur_batch, shard_rays], axis=0)
+                else:
+                    cur_batch = shard_rays
+                while cur_batch.shape[0] >= batch_size:
+                    yield cur_batch[:batch_size]
+                    cur_batch = cur_batch[batch_size:]
+            if not repeat:
+                break
+        if cur_batch.shape[0]:
+            yield cur_batch
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        for fd in self.fds:
+            fd.close()
+
+    def _create_shards(self, dataset: NeRFDataset):
+        key = self.shard_key
+        for view in dataset.views:
+            rays = view.rays()
+            key, this_key = jax.random.split(key)
+            assignments = jax.random.randint(
+                this_key, [rays.shape[0]], 0, self.num_shards
+            )
+            for shard in range(self.num_shards):
+                sub_batch = rays[assignments == shard]
+                if sub_batch.shape[0]:
+                    self._append_shard(shard, sub_batch)
+
+    def _append_shard(self, shard: int, arr: jnp.ndarray):
+        data = arr.astype(jnp.float32).tobytes()
+        self.fds[shard].write(data)
+
+    def _read_shard(self, shard: int) -> jnp.ndarray:
+        f = self.fds[shard]
+        f.seek(0)
+        data = f.read()
+        return jnp.array(np.frombuffer(data, dtype=jnp.float32).reshape([-1, 3, 3]))
+
+
 def load_dataset(directory: str) -> NeRFDataset:
     """
     Load a dataset from a directory on disk.
@@ -209,30 +282,3 @@ def load_dataset(directory: str) -> NeRFDataset:
         json_path = img_path[: -len(".png")] + ".json"
         dataset.views.append(FileNeRFView.from_json(json_path, image_path=img_path))
     return dataset
-
-
-class _ShardManager:
-    def __init__(self, num_files: int):
-        self.tmp_dir = tempfile.TemporaryDirectory()
-        self.fds = [
-            open(os.path.join(self.tmp_dir.name, f"{i}"), "wb+")
-            for i in range(num_files)
-        ]
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        for fd in self.fds:
-            fd.close()
-        self.tmp_dir.cleanup()
-
-    def append_shard(self, shard: int, arr: jnp.ndarray):
-        data = arr.astype(jnp.float32).tobytes()
-        self.fds[shard].write(data)
-
-    def read_shard(self, shard: int) -> jnp.ndarray:
-        f = self.fds[shard]
-        f.seek(0)
-        data = f.read()
-        return jnp.array(np.frombuffer(data, dtype=jnp.float32).reshape([-1, 3, 3]))

@@ -1,3 +1,4 @@
+import tempfile
 from dataclasses import dataclass
 
 import jax
@@ -39,9 +40,12 @@ def test_nerf_dataset_iterate_batches():
         bbox_min=(0.0, 0.0, 0.0),
         bbox_max=(1.0, 1.0, 1.0),
     )
-    batches = list(
-        dataset.iterate_batches(jax.random.PRNGKey(1234), batch_size=51, repeat=False)
-    )
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        batches = list(
+            dataset.iterate_batches(
+                tmp_dir, jax.random.PRNGKey(1234), batch_size=51, repeat=False
+            )
+        )
     assert len(batches) == 4, "unexpected number of batches"
     assert batches[-1].shape[0] == 200 - 51 * 3, "unexpected last batch size"
 

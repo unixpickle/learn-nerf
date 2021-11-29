@@ -3,6 +3,7 @@ Train a NeRF model on a scene.
 """
 
 import argparse
+import os
 import random
 
 import jax
@@ -61,7 +62,10 @@ def main():
 
     print("training...")
     data_key, key = jax.random.split(key)
-    for i, batch in enumerate(data.iterate_batches(data_key, args.batch_size)):
+    shuffle_dir = os.path.join(args.data_dir, "shuffled")
+    for i, batch in enumerate(
+        data.iterate_batches(shuffle_dir, data_key, args.batch_size)
+    ):
         step_key, key = jax.random.split(key)
         losses = step_fn(step_key, batch)
         loss_str = " ".join(f"{k}={float(v):.05}" for k, v in losses.items())
