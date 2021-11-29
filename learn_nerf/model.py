@@ -1,3 +1,5 @@
+from typing import Tuple
+
 import flax.linen as nn
 import jax.numpy as jnp
 
@@ -15,7 +17,7 @@ class NeRFModel(nn.Module):
     d_freqs: int = 4
 
     @nn.compact
-    def __call__(self, x: jnp.ndarray, d: jnp.ndarray) -> jnp.ndarray:
+    def __call__(self, x: jnp.ndarray, d: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """
         Predict densities and RGBs for sampled points on rays.
 
