@@ -31,7 +31,7 @@ First, install the `learn_nerf` package by running `pip install -e .` inside thi
 The training script is [learn_nerf/scripts/train_nerf.py](learn_nerf/scripts/train_nerf.py). Here's an example of running this script:
 
 ```
-python learn_nerf/scripts/train_nerf \
+python learn_nerf/scripts/train_nerf.py \
     --lr 1e-5 \
     --batch_size 1024 \
     --save_path model_weights.pkl \
@@ -44,4 +44,16 @@ If you get a `Segmentation fault` on CPU, this may be because you don't have eno
 
 ## Render a novel view
 
-This is a work-in-progress. Check back soon!
+To render a view from a trained NeRF model, use [learn_nerf/scripts/render_nerf.py](learn_nerf/scripts/render_nerf.py). Here's an example of the usage:
+
+```
+python learn_nerf/scripts/render_nerf.py \
+    --batch_size 1024 \
+    --model_path model_weights.pkl \
+    --width 128 \
+    --height 128 \
+    /path/to/data_dir/0000.json \
+    output.png
+```
+
+In the above example, we will render the camera view described by `/path/to/data_dir/0000.json`. Note that the camera view can be from the training set, but doesn't need to be as long as its in the correct JSON format.
