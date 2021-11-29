@@ -16,6 +16,15 @@ class NeRFModel(nn.Module):
 
     @nn.compact
     def __call__(self, x: jnp.ndarray, d: jnp.ndarray) -> jnp.ndarray:
+        """
+        Predict densities and RGBs for sampled points on rays.
+
+        :param x: an [N x 3] array of coordinates.
+        :param d: an [N x 3] array of ray directions.
+        :return: a tuple (density, rgb):
+                 - density: an [N x 1] array of non-negative densities.
+                 - rgb: an [N x 3] array of RGB values in [-1, 1].
+        """
         x_emb = sinusoidal_emb(x, self.x_freqs)
         d_emb = sinusoidal_emb(d, self.d_freqs)
 
