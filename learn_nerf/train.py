@@ -39,7 +39,7 @@ class TrainLoop:
         self.state = train_state.TrainState.create(
             apply_fn=self.losses,
             params=dict(coarse=coarse_vars["params"], fine=fine_vars["params"]),
-            tx=optax.adam(lr),
+            tx=optax.adam(lr, eps=1e-7),
         )
 
     def save(self, path: str):
