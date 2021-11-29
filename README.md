@@ -16,7 +16,7 @@ The steps to using this codebase are as follows:
 
 I use a simple format for storing rendered views of the scene. Each frame is stored as a PNG file, and each PNG has an accompanying JSON file describing the camera view.
 
-For easy experimentation, I create a Go program to render an arbitrary `.stl` file as a collection of views in the supported data format. To run this program, install [Go](https://go.dev/doc/install) and run `go get .` inside of [simple_dataset/](simple_dataset) to get the dependencies. Next, run
+For easy experimentation, I created a Go program to render an arbitrary `.stl` file as a collection of views in the supported data format. To run this program, install [Go](https://go.dev/doc/install) and run `go get .` inside of [simple_dataset/](simple_dataset) to get the dependencies. Next, run
 
 ```
 $ go run . /path/to/model.stl data_dir
