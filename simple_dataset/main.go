@@ -58,6 +58,12 @@ func main() {
 	essentials.Must(r.Close())
 	essentials.Must(err)
 	mesh := model3d.NewMeshTriangles(triangles)
+
+	mesh = mesh.Translate(mesh.Min().Mid(mesh.Max()).Scale(-1))
+	m := mesh.Max()
+	size := math.Max(math.Max(m.X, m.Y), m.Z)
+	mesh = mesh.Scale(1 / size)
+
 	collider := model3d.MeshToCollider(mesh)
 	object := render3d.Objectify(collider, func(c model3d.Coord3D, rc model3d.RayCollision) render3d.Color {
 		return render3d.NewColorRGB(red, green, blue)
