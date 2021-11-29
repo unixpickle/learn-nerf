@@ -56,6 +56,9 @@ def main():
         coarse_ts=args.coarse_samples,
         fine_ts=args.fine_samples,
     )
+    if os.path.exists(args.save_path):
+        print(f"loading from checkpoint: {args.save_path}")
+        loop.load(args.save_path)
     step_fn = loop.step_fn(
         jnp.array(t_min), jnp.array(t_max), jnp.array([-1.0, -1.0, -1.0])
     )

@@ -51,6 +51,13 @@ class TrainLoop:
             pickle.dump(self.state.params, f)
         os.rename(tmp_path, path)
 
+    def load(self, path: str):
+        """
+        Load the model parameters from a file.
+        """
+        with open(path, "rb") as f:
+            self.state = self.state.replace(params=pickle.load(f))
+
     def step_fn(
         self, t_min: jnp.ndarray, t_max: jnp.ndarray, background: jnp.ndarray
     ) -> Callable[[jax.random.PRNGKey, jnp.ndarray], Dict[str, jnp.ndarray]]:
@@ -114,7 +121,9 @@ class TrainLoop:
 
         # Evaluate the fine model using a combined set of points.
         fine_ts = coarse_ts.fine_sampling(
-            count=self.fine_ts, key=fine_key, densities=jax.lax.stop_gradient(coarse_densities)
+            count=self.fine_ts,
+            key=fine_key,
+            densities=jax.lax.stop_gradient(coarse_densities),
         )
         all_points = fine_ts.points(rays)
         direction_batch = jnp.tile(rays[:, 1:2], [1, all_points.shape[1], 1])
