@@ -38,7 +38,7 @@ class TrainLoop:
         coarse_vars = coarse.init(dict(params=coarse_rng), example_batch, example_batch)
         fine_vars = fine.init(dict(params=fine_rng), example_batch, example_batch)
         self.state = train_state.TrainState.create(
-            apply_fn=self.losses,
+            apply_fn=None,
             params=dict(coarse=coarse_vars["params"], fine=fine_vars["params"]),
             tx=optax.adam(lr, eps=1e-7),
         )
