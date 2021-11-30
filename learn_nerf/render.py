@@ -153,6 +153,7 @@ class RaySamples:
         key: jax.random.PRNGKey,
         densities: jnp.ndarray,
         combine: bool = True,
+        eps: float = 1e-8,
     ) -> "RaySamples":
         """
         Sample points along a ray leveraging density information from a
@@ -163,9 +164,11 @@ class RaySamples:
         :param densities: the sampled non-negative densities for ts.
         :param combine: if True, combine the new sampled points with the old
                         sampled points in one sorted array.
+        :param eps: a small probability to add to termination probs to avoid
+                    division by zero.
         :return: an [N x T'] array of sampled ts, similar to stratified_sampling().
         """
-        w = self.termination_probs(densities)[:, :-1]
+        w = self.termination_probs(densities)[:, :-1] + eps
 
         # Setup an inverse CDF for inverse transform sampling.
         xs = jnp.cumsum(w, axis=1)
