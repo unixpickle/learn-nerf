@@ -8,6 +8,7 @@ import jax.numpy as jnp
 import optax
 from flax.core.scope import VariableDict
 from flax.training import train_state
+from jax._src.prng import PRNGKeyArray as KeyArray
 
 from .model import NeRFModel
 from .render import NeRFRenderer
@@ -22,7 +23,7 @@ class TrainLoop:
         self,
         coarse: NeRFModel,
         fine: NeRFModel,
-        init_rng: jax.random.PRNGKey,
+        init_rng: KeyArray,
         lr: float,
         coarse_ts: int,
         fine_ts: int,
@@ -67,15 +68,13 @@ class TrainLoop:
 
         @jax.jit
         def step_fn(
-            state: train_state.TrainState, key: jax.random.PRNGKey, batch: jnp.ndarray
+            state: train_state.TrainState, key: KeyArray, batch: jnp.ndarray
         ) -> Tuple[train_state.TrainState, Dict[str, jnp.ndarray]]:
             loss_fn = partial(self.losses, key, t_min, t_max, background, batch)
             grad, values = jax.grad(loss_fn, has_aux=True)(state.params)
             return state.apply_gradients(grads=grad), values
 
-        def in_place_step(
-            key: jax.random.PRNGKey, batch: jnp.ndarray
-        ) -> Dict[str, jnp.ndarray]:
+        def in_place_step(key: KeyArray, batch: jnp.ndarray) -> Dict[str, jnp.ndarray]:
             self.state, ret_val = step_fn(self.state, key, batch)
             return ret_val
 
@@ -83,7 +82,7 @@ class TrainLoop:
 
     def losses(
         self,
-        key: jax.random.PRNGKey,
+        key: KeyArray,
         t_min: jnp.ndarray,
         t_max: jnp.ndarray,
         background: jnp.ndarray,

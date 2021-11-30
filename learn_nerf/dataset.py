@@ -8,6 +8,7 @@ from typing import Iterator, List, Tuple
 import jax
 import jax.numpy as jnp
 import numpy as np
+from jax._src.prng import PRNGKeyArray as KeyArray
 from PIL import Image
 
 Vec3 = Tuple[float, float, float]
@@ -107,7 +108,7 @@ class NeRFDataset:
     def iterate_batches(
         self,
         dir_path: str,
-        key: jax.random.PRNGKey,
+        key: KeyArray,
         batch_size: int,
         repeat: bool = True,
         num_shards: int = 32,
@@ -174,7 +175,7 @@ class ShuffledDataset:
         self,
         dir_path: str,
         dataset: NeRFDataset,
-        key: jax.random.PRNGKey,
+        key: KeyArray,
         num_shards: int = 32,
     ):
         self.num_shards = num_shards

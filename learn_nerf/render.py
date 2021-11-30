@@ -3,6 +3,7 @@ from typing import Any, Dict, Union
 
 import jax
 import jax.numpy as jnp
+from jax._src.prng import PRNGKeyArray as KeyArray
 
 from .model import NeRFModel
 
@@ -35,7 +36,7 @@ class NeRFRenderer:
 
     def render_rays(
         self,
-        key: jax.random.PRNGKey,
+        key: KeyArray,
         batch: jnp.ndarray,
     ) -> Dict[str, jnp.ndarray]:
         """
@@ -97,7 +98,7 @@ class RaySamples:
         cls,
         batch_size: int,
         count: int,
-        key: jax.random.PRNGKey,
+        key: KeyArray,
         t_min: jnp.ndarray,
         t_max: jnp.ndarray,
     ) -> jnp.ndarray:
@@ -150,7 +151,7 @@ class RaySamples:
     def fine_sampling(
         self,
         count: int,
-        key: jax.random.PRNGKey,
+        key: KeyArray,
         densities: jnp.ndarray,
         combine: bool = True,
         eps: float = 1e-8,
