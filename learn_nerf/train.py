@@ -1,7 +1,7 @@
 import os
 import pickle
 from functools import partial
-from typing import Callable, Dict, Tuple
+from typing import Any, Callable, Dict, Tuple
 
 import jax
 import jax.numpy as jnp
@@ -72,6 +72,15 @@ class TrainLoop:
         ) -> Tuple[train_state.TrainState, Dict[str, jnp.ndarray]]:
             loss_fn = partial(self.losses, key, t_min, t_max, background, batch)
             grad, values = jax.grad(loss_fn, has_aux=True)(state.params)
+
+            def tree_norm(tree: Any) -> jnp.ndarray:
+                return jnp.sqrt(
+                    jax.tree_util.tree_reduce(
+                        lambda total, x: total + jnp.sum(x ** 2), tree, jnp.array(0.0)
+                    )
+                )
+
+            values.update(dict(grad_norm=tree_norm(grad), param_norm=tree_norm(state.params)))
             return state.apply_gradients(grads=grad), values
 
         def in_place_step(key: KeyArray, batch: jnp.ndarray) -> Dict[str, jnp.ndarray]:
