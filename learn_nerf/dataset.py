@@ -45,12 +45,12 @@ class CameraView:
         """
         z = jnp.array(self.camera_direction, dtype=jnp.float32)
         ys = (
-            math.tan((math.pi / 180) * self.y_fov / 2)
+            math.tan(self.y_fov / 2)
             * jnp.linspace(-1, 1, num=height)[:, None, None]
             * jnp.array(self.y_axis, dtype=jnp.float32)
         )
         xs = (
-            math.tan((math.pi / 180) * self.x_fov / 2)
+            math.tan(self.x_fov / 2)
             * jnp.linspace(-1, 1, num=width)[None, :, None]
             * jnp.array(self.x_axis, dtype=jnp.float32)
         )
