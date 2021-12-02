@@ -61,7 +61,7 @@ def main():
         coarse_ts=args.coarse_samples,
         fine_ts=args.fine_samples,
     )
-    render_fn = jax.jit(renderer.render_rays)
+    render_fn = jax.jit(lambda *args: renderer.render_rays(*args))
 
     key = jax.random.PRNGKey(
         args.seed if args.seed is not None else random.randint(0, 2 ** 32 - 1)

@@ -54,20 +54,20 @@ def main():
         coarse_ts=args.coarse_samples,
         fine_ts=args.fine_samples,
     )
-    render_fn = jax.jit(renderer.render_rays)
+    render_fn = jax.jit(lambda *args: renderer.render_rays(*args))
 
     key = jax.random.PRNGKey(args.seed if args.seed is not None else random.randint(0, 2 ** 32 - 1))
 
     frame_arrays = []
-    for frame in range(args.num_frames):
+    for frame in range(args.frames):
         print(f"sampling frame {frame}...")
-        theta = (frame / args.num_frames) * math.pi * 2
+        theta = (frame / args.frames) * math.pi * 2
         direction = (math.cos(theta), math.sin(theta), 0.0)
         view = CameraView(
             camera_direction=direction,
             camera_origin=tuple(-x * args.t_max for x in direction),
-            x_axis=(-math.cos(theta), math.sin(theta), 0.0),
-            y_axis=(0.0, 0.0, 1.0),
+            x_axis=(math.cos(theta), -math.sin(theta), 0.0),
+            y_axis=(0.0, 0.0, -1.0),
             x_fov=60.0,
             y_fov=60.0,
         )
