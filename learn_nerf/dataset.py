@@ -129,7 +129,7 @@ class NeRFDataset:
         :return: an iterator over [N x 3 x 3] batches of rays, where each ray
                  is a tuple (origin, direction, color).
         """
-        with ShuffledDataset(dir_path, self, key) as sd:
+        with ShuffledDataset(dir_path, self, key, num_shards=num_shards) as sd:
             yield from sd.iterate_batches(batch_size, repeat=repeat)
 
     def t_bounds(self) -> Tuple[float, float]:
