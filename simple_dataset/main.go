@@ -24,6 +24,7 @@ func main() {
 	var red float64
 	var green float64
 	var blue float64
+	var noImages bool
 	flag.Float64Var(&fov, "fov", 60.0, "field of view in degrees")
 	flag.IntVar(&resolution, "resolution", 800, "side length of images to render")
 	flag.IntVar(&numImages, "images", 100, "number of images to render")
@@ -32,6 +33,7 @@ func main() {
 	flag.Float64Var(&red, "red", 0.8, "red color component")
 	flag.Float64Var(&green, "green", 0.8, "green color component")
 	flag.Float64Var(&blue, "blue", 0.0, "blue color component")
+	flag.BoolVar(&noImages, "no-images", false, "only save json files, not renderings")
 	flag.Usage = func() {
 		fmt.Fprintln(os.Stderr, "Usage: simple_dataset [flags] <input.stl> <output-dir>")
 		fmt.Fprintln(os.Stderr)
@@ -92,15 +94,18 @@ func main() {
 		log.Printf("Rendering imade %d/%d...", i+1, numImages)
 		direction := model3d.NewCoord3DRandUnit()
 		camera := render3d.DirectionalCamera(object, direction, fov*math.Pi/180)
-		caster := &render3d.RayCaster{
-			Camera: camera,
-			Lights: lights,
-		}
-		viewImage := render3d.NewImage(resolution, resolution)
-		caster.Render(viewImage, object)
 
-		imagePath := filepath.Join(outputDir, fmt.Sprintf("%04d.png", i))
-		essentials.Must(viewImage.Save(imagePath))
+		if !noImages {
+			caster := &render3d.RayCaster{
+				Camera: camera,
+				Lights: lights,
+			}
+			viewImage := render3d.NewImage(resolution, resolution)
+			caster.Render(viewImage, object)
+
+			imagePath := filepath.Join(outputDir, fmt.Sprintf("%04d.png", i))
+			essentials.Must(viewImage.Save(imagePath))
+		}
 
 		metaPath := filepath.Join(outputDir, fmt.Sprintf("%04d.json", i))
 		metadata := map[string]interface{}{
