@@ -91,7 +91,7 @@ func main() {
 	for i := 0; i < numImages; i++ {
 		log.Printf("Rendering imade %d/%d...", i+1, numImages)
 		direction := model3d.NewCoord3DRandUnit()
-		camera := directionalCamera(object, direction, fov*math.Pi/180)
+		camera := render3d.DirectionalCamera(object, direction, fov*math.Pi/180)
 		caster := &render3d.RayCaster{
 			Camera: camera,
 			Lights: lights,
@@ -116,40 +116,4 @@ func main() {
 		essentials.Must(json.NewEncoder(f).Encode(metadata))
 		essentials.Must(f.Close())
 	}
-}
-
-// directionalCamera figures out where to move a camera in
-// the given unit direction to capture the bounding box of
-// an object.
-func directionalCamera(object render3d.Object, direction model3d.Coord3D, fov float64) *render3d.Camera {
-	min, max := object.Min(), object.Max()
-	baseline := min.Dist(max)
-	center := min.Mid(max)
-
-	margin := 0.05
-	minDist := baseline * 1e-4
-	maxDist := baseline * 1e4
-	for i := 0; i < 32; i++ {
-		d := (minDist + maxDist) / 2
-		cam := render3d.NewCameraAt(center.Add(direction.Scale(d)), center, fov)
-		uncaster := cam.Uncaster(1, 1)
-		contained := true
-		for _, x := range []float64{min.X, max.X} {
-			for _, y := range []float64{min.Y, max.Y} {
-				for _, z := range []float64{min.Z, max.Z} {
-					sx, sy := uncaster(model3d.XYZ(x, y, z))
-					if sx < margin || sy < margin || sx >= 1-margin || sy >= 1-margin {
-						contained = false
-					}
-				}
-			}
-		}
-		if contained {
-			maxDist = d
-		} else {
-			minDist = d
-		}
-	}
-
-	return render3d.NewCameraAt(center.Add(direction.Scale(maxDist)), center, fov)
 }
