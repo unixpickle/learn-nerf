@@ -42,7 +42,7 @@ def main():
 
     print("loading view and metadata...")
     view = CameraView.from_json(args.view_json)
-    with open(args.metadata_path, "rb") as f:
+    with open(args.metadata_json, "rb") as f:
         metadata = json.load(f)
 
     print("gathering rays...")
