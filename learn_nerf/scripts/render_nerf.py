@@ -3,6 +3,7 @@ Render a view using a NeRF model.
 """
 
 import argparse
+import json
 import pickle
 import random
 
@@ -34,12 +35,15 @@ def main():
     parser.add_argument("--t_min", type=float, default=0.0)
     parser.add_argument("--t_max", type=float, default=15.0)
     parser.add_argument("--model_path", type=str, default="nerf.pkl")
+    parser.add_argument("metadata_json", type=str)
     parser.add_argument("view_json", type=str)
     parser.add_argument("output_png", type=str)
     args = parser.parse_args()
 
-    print("loading view...")
+    print("loading view and metadata...")
     view = CameraView.from_json(args.view_json)
+    with open(args.metadata_path, "rb") as f:
+        metadata = json.load(f)
 
     print("gathering rays...")
     rays = view.bare_rays(args.width, args.height)
@@ -56,8 +60,8 @@ def main():
         coarse_params=params["coarse"],
         fine_params=params["fine"],
         background=jnp.array([-1.0, -1.0, -1.0]),
-        t_min=jnp.array(args.t_min),
-        t_max=jnp.array(args.t_max),
+        bbox_min=jnp.array(metadata["min"], dtype=jnp.float32),
+        bbox_max=jnp.array(metadata["max"], dtype=jnp.float32),
         coarse_ts=args.coarse_samples,
         fine_ts=args.fine_samples,
     )
