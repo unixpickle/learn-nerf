@@ -37,8 +37,6 @@ def main():
     data = load_dataset(args.data_dir)
     if args.one_view:
         data.views = data.views[:1]
-    t_min, t_max = data.t_bounds()
-    print(f"found t_min/t_max: [{t_min}, {t_max}]")
 
     key = jax.random.PRNGKey(
         args.seed if args.seed is not None else random.randint(0, 2 ** 32 - 1)
@@ -60,7 +58,9 @@ def main():
         print(f"loading from checkpoint: {args.save_path}")
         loop.load(args.save_path)
     step_fn = loop.step_fn(
-        jnp.array(t_min), jnp.array(t_max), jnp.array([-1.0, -1.0, -1.0])
+        jnp.array(data.bbox_min),
+        jnp.array(data.bbox_max),
+        jnp.array([-1.0, -1.0, -1.0]),
     )
 
     print("training...")

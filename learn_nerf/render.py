@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Dict, Union
+from typing import Any, Dict, Tuple
 
 import jax
 import jax.numpy as jnp
@@ -18,8 +18,8 @@ class NeRFRenderer:
     :param coarse_params: params of the coarse model.
     :param fine_params: params of the fine model.
     :param background: the [3] RGB array background color.
-    :param t_min: minimum t to sample.
-    :param t_max: maximum t to sample.
+    :param bbox_min: minimum point of the scene bounding box.
+    :param bbox_max: maximum point of the scene bounding box.
     :param coarse_ts: samples per ray for coarse model.
     :param fine_ts: additional samples per ray for fine model.
     """
@@ -29,10 +29,12 @@ class NeRFRenderer:
     coarse_params: Any
     fine_params: Any
     background: jnp.ndarray
-    t_min: jnp.ndarray
-    t_max: jnp.ndarray
+    bbox_min: jnp.ndarray
+    bbox_max: jnp.ndarray
     coarse_ts: int
     fine_ts: int
+
+    min_t_range: float = 1e-3
 
     def render_rays(
         self,
@@ -45,14 +47,15 @@ class NeRFRenderer:
         :return: a dict with "fine" and "coarse" keys mapping to [N x 3] arrays of
                 RGB colors.
         """
+        t_min, t_max = self.t_range(batch)
+
         coarse_key, fine_key = jax.random.split(key)
         # Evaluate the coarse model using regular stratified sampling.
         coarse_ts = RaySamples.stratified_sampling(
-            batch_size=batch.shape[0],
+            t_min=t_min,
+            t_max=t_max,
             count=self.coarse_ts,
             key=coarse_key,
-            t_min=self.t_min,
-            t_max=self.t_max,
         )
         all_points = coarse_ts.points(batch)
         direction_batch = jnp.tile(batch[:, 1:2], [1, all_points.shape[1], 1])
@@ -86,6 +89,51 @@ class NeRFRenderer:
 
         return dict(coarse=coarse_outputs, fine=fine_outputs)
 
+    def t_range(
+        self, batch: jnp.ndarray, eps: float = 1e-8
+    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
+        """
+        For a batch of rays, compute the t_min and t_max for each ray
+        according to the scene bounding box.
+
+        :param batch: a batch of rays, each of [N x 2 x 3] rays.
+        :param epsilon: small offset to add to ray directions to prevent NaNs.
+        :return: a tuple [t_min, t_max] of [N] arrays.
+        """
+
+        bbox = jnp.stack([self.bbox_min, self.bbox_max])
+
+        def ray_t_range(ray: jnp.ndarray):
+            origin = ray[0]
+            direction = ray[1]
+
+            # Find timesteps of collision on each axis:
+            # o+t*d=b
+            # t*d=b-o
+            # t=(b-o)/d
+            offsets = bbox - origin
+            ts = offsets / (direction + eps)
+
+            # Sort so that the minimum t always comes first.
+            ts = jnp.concatenate(
+                [
+                    jnp.min(ts, axis=1, keepdims=True),
+                    jnp.max(ts, axis=1, keepdims=True),
+                ],
+                axis=1,
+            )
+
+            # Find overlapping bounds and apply constraints.
+            min_t = jnp.maximum(0, jnp.max(ts[:, 0]))
+            max_t = jnp.min(ts[:, 1])
+            max_t_clipped = jnp.maximum(max_t, min_t + self.min_t_range)
+            real_range = jnp.stack([min_t, max_t_clipped])
+            null_range = jnp.array([0, self.min_t_range])
+            return jnp.where(min_t >= max_t, null_range, real_range)
+
+        out = jax.vmap(ray_t_range)(batch)
+        return out[:, 0], out[:, 1]
+
 
 @dataclass
 class RaySamples:
@@ -96,26 +144,26 @@ class RaySamples:
     @classmethod
     def stratified_sampling(
         cls,
-        batch_size: int,
-        count: int,
-        key: KeyArray,
         t_min: jnp.ndarray,
         t_max: jnp.ndarray,
+        count: int,
+        key: KeyArray,
     ) -> jnp.ndarray:
         """
-        :param batch_size: number of batch elements.
+        :param t_min: a batch of minimum values.
+        :param t_max: a batch of maximum values.
         :param count: number of samples per batch element.
         :param key: RNG key for sampling.
-        :param t_min: a scalar array containing the minimum value.
-        :param t_max: a scalar array containing the maximum value.
         :return: a [batch_size x count] batch of t values, where
                 min <= t <= max and t_i < t_{i+1} for all i for
                 each batch element.
         """
-        bin_size = (t_max - t_min) / count
-        midpoints = jnp.arange(0, count, dtype=jnp.float32) * bin_size + t_min
-        randoms = jax.random.uniform(key, (batch_size, count), maxval=bin_size)
-        return cls(t_min=t_min, t_max=t_max, ts=randoms + midpoints)
+        bin_size = ((t_max - t_min) / count)[:, None]
+        bin_starts = (
+            jnp.arange(0, count, dtype=jnp.float32)[None] * bin_size + t_min[:, None]
+        )
+        randoms = jax.random.uniform(key, bin_starts.shape) * bin_size
+        return cls(t_min=t_min, t_max=t_max, ts=bin_starts + randoms)
 
     def points(self, rays: jnp.ndarray) -> jnp.ndarray:
         """
@@ -176,17 +224,16 @@ class RaySamples:
         xs = jnp.concatenate([self._const_vec(0.0), xs], axis=1)
         xs = xs / xs[:, -1:]  # normalize
         ys = jnp.concatenate(
-            [self._const_vec(self.t_min), self.ends()],
+            [self.t_min[:, None], self.ends()],
             axis=1,
         )
 
         # Evaluate the inverse CDF at quasi-random points.
         input_samples = self.stratified_sampling(
-            batch_size=self.ts.shape[0],
+            t_min=jnp.zeros_like(self.t_min),
+            t_max=jnp.ones_like(self.t_max),
             count=count,
             key=key,
-            t_min=jnp.array(0.0),
-            t_max=jnp.array(1.0),
         )
         new_ts = jax.vmap(jnp.interp)(input_samples.ts, xs, ys)
 
@@ -198,11 +245,11 @@ class RaySamples:
 
     def starts(self) -> jnp.ndarray:
         t_mid = (self.ts[:, 1:] + self.ts[:, :-1]) / 2
-        return jnp.concatenate([self._const_vec(self.t_min), t_mid], axis=1)
+        return jnp.concatenate([self.t_min[:, None], t_mid], axis=1)
 
     def ends(self) -> jnp.ndarray:
         t_mid = (self.ts[:, 1:] + self.ts[:, :-1]) / 2
-        return jnp.concatenate([t_mid, self._const_vec(self.t_max)], axis=1)
+        return jnp.concatenate([t_mid, self.t_max[:, None]], axis=1)
 
     def deltas(self) -> jnp.ndarray:
         return self.ends() - self.starts()
@@ -226,7 +273,5 @@ class RaySamples:
 
         return prob_survive * prob_terminate
 
-    def _const_vec(self, x: Union[jnp.ndarray, float]) -> jnp.ndarray:
-        if not isinstance(x, jnp.ndarray):
-            x = jnp.array(x)
-        return jnp.tile(x.reshape([1, 1]), [self.ts.shape[0], 1])
+    def _const_vec(self, x: float) -> jnp.ndarray:
+        return jnp.tile(jnp.array(x).reshape([1, 1]), [self.ts.shape[0], 1])

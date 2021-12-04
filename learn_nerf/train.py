@@ -10,6 +10,7 @@ from flax.core.scope import VariableDict
 from flax.training import train_state
 from jax._src.prng import PRNGKeyArray as KeyArray
 
+from .dataset import Vec3
 from .model import NeRFModel
 from .render import NeRFRenderer
 
@@ -60,7 +61,7 @@ class TrainLoop:
             self.state = self.state.replace(params=pickle.load(f))
 
     def step_fn(
-        self, t_min: jnp.ndarray, t_max: jnp.ndarray, background: jnp.ndarray
+        self, bbox_min: jnp.ndarray, bbox_max: jnp.ndarray, background: jnp.ndarray
     ) -> Callable[[jax.random.PRNGKey, jnp.ndarray], Dict[str, jnp.ndarray]]:
         """
         Create a function that steps in place and returns a logging dict.
@@ -70,7 +71,7 @@ class TrainLoop:
         def step_fn(
             state: train_state.TrainState, key: KeyArray, batch: jnp.ndarray
         ) -> Tuple[train_state.TrainState, Dict[str, jnp.ndarray]]:
-            loss_fn = partial(self.losses, key, t_min, t_max, background, batch)
+            loss_fn = partial(self.losses, key, bbox_min, bbox_max, background, batch)
             grad, values = jax.grad(loss_fn, has_aux=True)(state.params)
 
             def tree_norm(tree: Any) -> jnp.ndarray:
@@ -80,7 +81,9 @@ class TrainLoop:
                     )
                 )
 
-            values.update(dict(grad_norm=tree_norm(grad), param_norm=tree_norm(state.params)))
+            values.update(
+                dict(grad_norm=tree_norm(grad), param_norm=tree_norm(state.params))
+            )
             return state.apply_gradients(grads=grad), values
 
         def in_place_step(key: KeyArray, batch: jnp.ndarray) -> Dict[str, jnp.ndarray]:
@@ -92,8 +95,8 @@ class TrainLoop:
     def losses(
         self,
         key: KeyArray,
-        t_min: jnp.ndarray,
-        t_max: jnp.ndarray,
+        bbox_min: jnp.ndarray,
+        bbox_max: jnp.ndarray,
         background: jnp.ndarray,
         batch: jnp.ndarray,
         params: VariableDict,
@@ -107,8 +110,8 @@ class TrainLoop:
             coarse_params=params["coarse"],
             fine_params=params["fine"],
             background=background,
-            t_min=t_min,
-            t_max=t_max,
+            bbox_min=bbox_min,
+            bbox_max=bbox_max,
             coarse_ts=self.coarse_ts,
             fine_ts=self.fine_ts,
         )
