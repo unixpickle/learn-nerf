@@ -117,15 +117,15 @@ class NeRFRenderer:
             # Sort so that the minimum t always comes first.
             ts = jnp.concatenate(
                 [
-                    jnp.min(ts, axis=1, keepdims=True),
-                    jnp.max(ts, axis=1, keepdims=True),
+                    jnp.min(ts, axis=0, keepdims=True),
+                    jnp.max(ts, axis=0, keepdims=True),
                 ],
-                axis=1,
+                axis=0,
             )
 
             # Find overlapping bounds and apply constraints.
-            min_t = jnp.maximum(0, jnp.max(ts[:, 0]))
-            max_t = jnp.min(ts[:, 1])
+            min_t = jnp.maximum(0, jnp.max(ts[0]))
+            max_t = jnp.min(ts[1])
             max_t_clipped = jnp.maximum(max_t, min_t + self.min_t_range)
             real_range = jnp.stack([min_t, max_t_clipped])
             null_range = jnp.array([0, self.min_t_range])
