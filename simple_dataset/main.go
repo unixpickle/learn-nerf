@@ -22,22 +22,18 @@ func main() {
 	var numImages int
 	var numLights int
 	var lightBrightness float64
-	var red float64
-	var green float64
-	var blue float64
 	var noImages bool
 	var seed int64
+	color := VectorFlag{Value: model3d.XYZ(0.8, 0.8, 0.0)}
 
 	flag.Float64Var(&fov, "fov", 60.0, "field of view in degrees")
 	flag.IntVar(&resolution, "resolution", 800, "side length of images to render")
 	flag.IntVar(&numImages, "images", 100, "number of images to render")
 	flag.IntVar(&numLights, "num-lights", 5, "number of lights to put into the scene")
 	flag.Float64Var(&lightBrightness, "light-brightness", 0.5, "brightness of lights")
-	flag.Float64Var(&red, "red", 0.8, "red color component")
-	flag.Float64Var(&green, "green", 0.8, "green color component")
-	flag.Float64Var(&blue, "blue", 0.0, "blue color component")
 	flag.BoolVar(&noImages, "no-images", false, "only save json files, not renderings")
 	flag.Int64Var(&seed, "seed", 0, "seed for Go's random number generation")
+	flag.Var(&color, "color", "color of the model, as 'r,g,b'")
 
 	flag.Usage = func() {
 		fmt.Fprintln(os.Stderr, "Usage: simple_dataset [flags] <input.stl> <output-dir>")
@@ -64,7 +60,7 @@ func main() {
 
 	log.Println("Loading model...")
 	inputPath := flag.Args()[0]
-	object := ReadObject(inputPath, red, green, blue)
+	object := ReadObject(inputPath, color.Value)
 
 	log.Println("Writing metadata...")
 	WriteGlobalMetadata(outputDir, object)
@@ -104,7 +100,7 @@ func main() {
 	}
 }
 
-func ReadObject(path string, red, green, blue float64) render3d.Object {
+func ReadObject(path string, color model3d.Coord3D) render3d.Object {
 	r, err := os.Open(path)
 	essentials.Must(err)
 	defer r.Close()
@@ -117,7 +113,7 @@ func ReadObject(path string, red, green, blue float64) render3d.Object {
 	return render3d.Objectify(
 		collider,
 		func(c model3d.Coord3D, rc model3d.RayCollision) render3d.Color {
-			return render3d.NewColorRGB(red, green, blue)
+			return render3d.NewColorRGB(color.X, color.Y, color.Z)
 		},
 	)
 }
