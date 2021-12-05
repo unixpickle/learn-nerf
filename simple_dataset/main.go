@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"math/rand"
 	"os"
 	"path/filepath"
 
@@ -25,6 +26,8 @@ func main() {
 	var green float64
 	var blue float64
 	var noImages bool
+	var seed int64
+
 	flag.Float64Var(&fov, "fov", 60.0, "field of view in degrees")
 	flag.IntVar(&resolution, "resolution", 800, "side length of images to render")
 	flag.IntVar(&numImages, "images", 100, "number of images to render")
@@ -34,6 +37,8 @@ func main() {
 	flag.Float64Var(&green, "green", 0.8, "green color component")
 	flag.Float64Var(&blue, "blue", 0.0, "blue color component")
 	flag.BoolVar(&noImages, "no-images", false, "only save json files, not renderings")
+	flag.Int64Var(&seed, "seed", 0, "seed for Go's random number generation")
+
 	flag.Usage = func() {
 		fmt.Fprintln(os.Stderr, "Usage: simple_dataset [flags] <input.stl> <output-dir>")
 		fmt.Fprintln(os.Stderr)
@@ -41,59 +46,35 @@ func main() {
 		flag.PrintDefaults()
 		os.Exit(1)
 	}
+
 	flag.Parse()
 	if len(flag.Args()) != 2 {
 		flag.Usage()
 	}
-	inputPath := flag.Args()[0]
+
+	rand.Seed(seed)
+
 	outputDir := flag.Args()[1]
+	log.Printf("Creating output directory: %s...", outputDir)
 	if stats, err := os.Stat(outputDir); err == nil && !stats.IsDir() {
 		essentials.Die("output directory already exists: " + outputDir)
 	} else if os.IsNotExist(err) {
 		essentials.Must(os.MkdirAll(outputDir, 0755))
 	}
 
-	log.Println("Loading mesh...")
-	r, err := os.Open(inputPath)
-	essentials.Must(err)
-	triangles, err := model3d.ReadSTL(r)
-	essentials.Must(r.Close())
-	essentials.Must(err)
-	mesh := model3d.NewMeshTriangles(triangles)
-
-	mesh = mesh.Translate(mesh.Min().Mid(mesh.Max()).Scale(-1))
-	m := mesh.Max()
-	size := math.Max(math.Max(m.X, m.Y), m.Z)
-	mesh = mesh.Scale(1 / size)
-
-	collider := model3d.MeshToCollider(mesh)
-	object := render3d.Objectify(collider, func(c model3d.Coord3D, rc model3d.RayCollision) render3d.Color {
-		return render3d.NewColorRGB(red, green, blue)
-	})
-	center := object.Min().Mid(object.Max())
+	log.Println("Loading model...")
+	inputPath := flag.Args()[0]
+	object := ReadObject(inputPath, red, green, blue)
 
 	log.Println("Writing metadata...")
-	globalMetadataPath := filepath.Join(outputDir, "metadata.json")
-	f, err := os.Create(globalMetadataPath)
-	essentials.Must(err)
-	globalMetadata := map[string]interface{}{"min": object.Min().Array(), "max": object.Max().Array()}
-	essentials.Must(json.NewEncoder(f).Encode(globalMetadata))
-	f.Close()
+	WriteGlobalMetadata(outputDir, object)
 
 	log.Println("Creating random lights...")
-	lights := []*render3d.PointLight{}
-	for i := 0; i < numLights; i++ {
-		direction := model3d.NewCoord3DRandUnit()
-		lights = append(lights, &render3d.PointLight{
-			Origin: center.Add(direction.Scale(1000)),
-			Color:  render3d.NewColor(lightBrightness),
-		})
-	}
+	lights := RandomLights(object, numLights, lightBrightness)
 
 	for i := 0; i < numImages; i++ {
 		log.Printf("Rendering imade %d/%d...", i+1, numImages)
-		direction := model3d.NewCoord3DRandUnit()
-		camera := render3d.DirectionalCamera(object, direction, fov*math.Pi/180)
+		camera := RandomCamera(object, fov)
 
 		if !noImages {
 			caster := &render3d.RayCaster{
@@ -121,4 +102,59 @@ func main() {
 		essentials.Must(json.NewEncoder(f).Encode(metadata))
 		essentials.Must(f.Close())
 	}
+}
+
+func ReadObject(path string, red, green, blue float64) render3d.Object {
+	r, err := os.Open(path)
+	essentials.Must(err)
+	defer r.Close()
+
+	triangles, err := model3d.ReadSTL(r)
+	essentials.Must(err)
+	mesh := normalizeMesh(model3d.NewMeshTriangles(triangles))
+
+	collider := model3d.MeshToCollider(mesh)
+	return render3d.Objectify(
+		collider,
+		func(c model3d.Coord3D, rc model3d.RayCollision) render3d.Color {
+			return render3d.NewColorRGB(red, green, blue)
+		},
+	)
+}
+
+func normalizeMesh(mesh *model3d.Mesh) *model3d.Mesh {
+	mesh = mesh.Translate(mesh.Min().Mid(mesh.Max()).Scale(-1))
+	m := mesh.Max()
+	size := math.Max(math.Max(m.X, m.Y), m.Z)
+	return mesh.Scale(1 / size)
+}
+
+func WriteGlobalMetadata(outputDir string, object render3d.Object) {
+	globalMetadataPath := filepath.Join(outputDir, "metadata.json")
+	f, err := os.Create(globalMetadataPath)
+	essentials.Must(err)
+	defer f.Close()
+	globalMetadata := map[string]interface{}{
+		"min": object.Min().Array(),
+		"max": object.Max().Array(),
+	}
+	essentials.Must(json.NewEncoder(f).Encode(globalMetadata))
+}
+
+func RandomLights(object render3d.Object, n int, brightness float64) []*render3d.PointLight {
+	center := object.Min().Mid(object.Max())
+	lights := make([]*render3d.PointLight, n)
+	for i := 0; i < n; i++ {
+		direction := model3d.NewCoord3DRandUnit()
+		lights[i] = &render3d.PointLight{
+			Origin: center.Add(direction.Scale(1000)),
+			Color:  render3d.NewColor(brightness),
+		}
+	}
+	return lights
+}
+
+func RandomCamera(object render3d.Object, fov float64) *render3d.Camera {
+	direction := model3d.NewCoord3DRandUnit()
+	return render3d.DirectionalCamera(object, direction, fov*math.Pi/180)
 }
