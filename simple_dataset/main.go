@@ -22,18 +22,24 @@ func main() {
 	var numImages int
 	var numLights int
 	var lightBrightness float64
-	var noImages bool
 	var seed int64
+	var noImages bool
+	var rotate bool
 	color := VectorFlag{Value: model3d.XYZ(0.8, 0.8, 0.0)}
+	rotationAxis := VectorFlag{Value: model3d.Z(1.0)}
+	rotationOffset := VectorFlag{Value: model3d.Y(-1.0)}
 
 	flag.Float64Var(&fov, "fov", 60.0, "field of view in degrees")
 	flag.IntVar(&resolution, "resolution", 800, "side length of images to render")
 	flag.IntVar(&numImages, "images", 100, "number of images to render")
 	flag.IntVar(&numLights, "num-lights", 5, "number of lights to put into the scene")
 	flag.Float64Var(&lightBrightness, "light-brightness", 0.5, "brightness of lights")
-	flag.BoolVar(&noImages, "no-images", false, "only save json files, not renderings")
 	flag.Int64Var(&seed, "seed", 0, "seed for Go's random number generation")
+	flag.BoolVar(&noImages, "no-images", false, "only save json files, not renderings")
+	flag.BoolVar(&rotate, "rotate", false, "render a rotating view rather than random views")
 	flag.Var(&color, "color", "color of the model, as 'r,g,b'")
+	flag.Var(&rotationAxis, "rotation-axis", "axis of rotation for -rotate")
+	flag.Var(&rotationOffset, "rotation-offest", "initial offset from center for -rotate")
 
 	flag.Usage = func() {
 		fmt.Fprintln(os.Stderr, "Usage: simple_dataset [flags] <input.stl> <output-dir>")
@@ -68,9 +74,21 @@ func main() {
 	log.Println("Creating random lights...")
 	lights := RandomLights(object, numLights, lightBrightness)
 
+	var cameraGen CameraGen
+	if rotate {
+		cameraGen = &RotatingCameraGen{
+			Object: object,
+			Fov:    fov,
+			Axis:   rotationAxis.Value,
+			Offset: rotationOffset.Value,
+		}
+	} else {
+		cameraGen = &RandomCameraGen{Object: object, Fov: fov}
+	}
+
 	for i := 0; i < numImages; i++ {
 		log.Printf("Rendering imade %d/%d...", i+1, numImages)
-		camera := RandomCamera(object, fov)
+		camera := cameraGen.Camera(i, numImages)
 
 		if !noImages {
 			caster := &render3d.RayCaster{
@@ -148,9 +166,4 @@ func RandomLights(object render3d.Object, n int, brightness float64) []*render3d
 		}
 	}
 	return lights
-}
-
-func RandomCamera(object render3d.Object, fov float64) *render3d.Camera {
-	direction := model3d.NewCoord3DRandUnit()
-	return render3d.DirectionalCamera(object, direction, fov*math.Pi/180)
 }
