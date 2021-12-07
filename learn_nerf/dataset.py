@@ -98,12 +98,22 @@ class FileNeRFView(NeRFView):
 
 
 @dataclass
-class NeRFDataset:
-    views: List[NeRFView]
-
+class ModelMetadata:
     # Scene/object bounding box.
     bbox_min: Vec3
     bbox_max: Vec3
+
+    @classmethod
+    def from_json(cls, path: str) -> "ModelMetadata":
+        with open(path, "rb") as f:
+            metadata = json.load(f)
+        return ModelMetadata(bbox_min=tuple(metadata["min"]), bbox_max=tuple(metadata["max"]))
+
+
+@dataclass
+class NeRFDataset:
+    metadata: ModelMetadata
+    views: List[NeRFView]
 
     def iterate_batches(
         self,
@@ -247,10 +257,9 @@ def load_dataset(directory: str) -> NeRFDataset:
     camera. There is also a global "metadata.json" file containing the bounding
     box of the scene, stored as a dictionary with keys "min" and "max".
     """
-    with open(os.path.join(directory, "metadata.json"), "rb") as f:
-        metadata = json.load(f)
     dataset = NeRFDataset(
-        views=[], bbox_min=tuple(metadata["min"]), bbox_max=tuple(metadata["max"])
+        metadata=ModelMetadata.from_json(os.path.join(directory, "metadata.json")),
+        views=[],
     )
     for img_name in os.listdir(directory):
         if img_name.startswith(".") or not img_name.endswith(".png"):

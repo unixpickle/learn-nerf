@@ -10,7 +10,7 @@ import random
 import jax
 import jax.numpy as jnp
 import numpy as np
-from learn_nerf.dataset import CameraView
+from learn_nerf.dataset import CameraView, ModelMetadata
 from learn_nerf.model import NeRFModel
 from learn_nerf.render import NeRFRenderer
 from PIL import Image
@@ -31,11 +31,12 @@ def main():
     parser.add_argument("--frames", type=int, default=10)
     parser.add_argument("--width", type=int, default=512)
     parser.add_argument("--height", type=int, default=512)
-    parser.add_argument("--t_min", type=float, default=0.0)
-    parser.add_argument("--t_max", type=float, default=15.0)
     parser.add_argument("--model_path", type=str, default="nerf.pkl")
+    parser.add_argument("metadata_json", type=str)
     parser.add_argument("output_png", type=str)
     args = parser.parse_args()
+
+    metadata = ModelMetadata.from_json(args.metadata_json)
 
     print("loading model...")
     coarse = NeRFModel()
@@ -49,8 +50,8 @@ def main():
         coarse_params=params["coarse"],
         fine_params=params["fine"],
         background=jnp.array([-1.0, -1.0, -1.0]),
-        t_min=jnp.array(args.t_min),
-        t_max=jnp.array(args.t_max),
+        bbox_min=jnp.array(metadata.bbox_min, dtype=jnp.float32),
+        bbox_max=jnp.array(metadata.bbox_max, dtype=jnp.float32),
         coarse_ts=args.coarse_samples,
         fine_ts=args.fine_samples,
     )

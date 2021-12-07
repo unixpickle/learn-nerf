@@ -58,8 +58,8 @@ def main():
         print(f"loading from checkpoint: {args.save_path}")
         loop.load(args.save_path)
     step_fn = loop.step_fn(
-        jnp.array(data.bbox_min),
-        jnp.array(data.bbox_max),
+        jnp.array(data.metadata.bbox_min),
+        jnp.array(data.metadata.bbox_max),
         jnp.array([-1.0, -1.0, -1.0]),
     )
 
