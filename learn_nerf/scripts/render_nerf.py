@@ -33,16 +33,12 @@ def main():
     parser.add_argument("--height", type=int, default=512)
     parser.add_argument("--model_path", type=str, default="nerf.pkl")
     parser.add_argument("metadata_json", type=str)
-    parser.add_argument("view_json", type=str)
+    parser.add_argument("view_json", type=str, nargs="+")
     parser.add_argument("output_png", type=str)
     args = parser.parse_args()
 
-    print("loading view and metadata...")
-    view = CameraView.from_json(args.view_json)
+    print("loading metadata...")
     metadata = ModelMetadata.from_json(args.metadata_json)
-
-    print("gathering rays...")
-    rays = view.bare_rays(args.width, args.height)
 
     print("loading model...")
     coarse = NeRFModel()
@@ -63,20 +59,24 @@ def main():
     )
     render_fn = jax.jit(lambda *args: renderer.render_rays(*args))
 
-    key = jax.random.PRNGKey(
-        args.seed if args.seed is not None else random.randint(0, 2 ** 32 - 1)
-    )
+    key = jax.random.PRNGKey(args.seed if args.seed is not None else random.randint(0, 2 ** 32 - 1))
 
-    print("sampling pixels...")
-    colors = jnp.zeros([0, 3])
-    for i in tqdm(range(0, rays.shape[0], args.batch_size)):
-        sub_batch = rays[i : i + args.batch_size]
-        key, this_key = jax.random.split(key)
-        sub_colors = render_fn(this_key, sub_batch)
-        colors = jnp.concatenate([colors, sub_colors["fine"]], axis=0)
-    image = (
-        (np.array(colors).reshape([args.height, args.width, 3]) + 1) * 127.5
-    ).astype(jnp.uint8)
+    images = []
+    for view_json in args.view_json:
+        print(f"rendering view {view_json}...")
+        view = CameraView.from_json(view_json)
+        rays = view.bare_rays(args.width, args.height)
+        colors = jnp.zeros([0, 3])
+        for i in tqdm(range(0, rays.shape[0], args.batch_size)):
+            sub_batch = rays[i : i + args.batch_size]
+            key, this_key = jax.random.split(key)
+            sub_colors = render_fn(this_key, sub_batch)
+            colors = jnp.concatenate([colors, sub_colors["fine"]], axis=0)
+        image = ((np.array(colors).reshape([args.height, args.width, 3]) + 1) * 127.5).astype(
+            jnp.uint8
+        )
+        images.append(image)
+    image = np.concatenate(images, axis=1)
     Image.fromarray(image).save(args.output_png)
 
 
