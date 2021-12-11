@@ -7,10 +7,12 @@ import pickle
 
 import jax
 import jax.numpy as jnp
+import matplotlib.pyplot as plt
 import numpy as np
 import skimage
 from learn_nerf.dataset import ModelMetadata
 from learn_nerf.model import NeRFModel
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from tqdm.auto import tqdm
 
 
@@ -39,17 +41,17 @@ def main():
         ]
     )
 
-    input_xs = np.linspace(
-        metadata.bbox_min[0], metadata.bbox_max[0], num=args.resolution
-    )
-    input_ys = np.linspace(
-        metadata.bbox_min[1], metadata.bbox_max[1], num=args.resolution
-    )
-    input_zs = np.linspace(
-        metadata.bbox_min[2], metadata.bbox_max[2], num=args.resolution
-    )
+    input_steps = [
+        pad_edges(np.linspace(bbox_min, bbox_max, num=args.resolution))
+        for bbox_min, bbox_max in zip(metadata.bbox_min, metadata.bbox_max)
+    ]
     input_coords = jnp.array(
-        [[x, y, z] for z in input_zs for y in input_ys for x in input_xs]
+        [
+            [x, y, z]
+            for z in input_steps[2]
+            for y in input_steps[1]
+            for x in input_steps[0]
+        ]
     )
 
     outputs = []
@@ -58,10 +60,41 @@ def main():
         density = density_fn(batch)
         outputs.append(density - args.threshold)
 
-    volume = np.array(jnp.concatenate(outputs, axis=0).reshape([args.resolution] * 3))
+    volume = np.array(
+        jnp.concatenate(outputs, axis=0).reshape([args.resolution + 2] * 3)
+    )
 
-    verts, faces, normals, values = skimage.measure.marching_cubes
-    # TODO: figure out how to render/save the model.
+    # Adapted from https://scikit-image.org/docs/dev/auto_examples/edges/plot_marching_cubes.html.
+    verts, faces, _normals, _values = skimage.measure.marching_cubes(volume, level=0)
+    verts = flip_x_and_z(verts)
+
+    size = np.array(metadata.bbox_max) - np.array(metadata.bbox_min)
+    verts *= size / args.resolution
+    verts -= (np.max(verts, axis=0) + np.min(verts, axis=0)) / 2
+    max_size = np.max(verts)
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection="3d")
+
+    mesh = Poly3DCollection(verts[faces])
+    mesh.set_edgecolor("k")
+    ax.add_collection3d(mesh)
+
+    ax.set_xlim(-max_size, max_size)
+    ax.set_ylim(-max_size, max_size)
+    ax.set_zlim(-max_size, max_size)
+
+    plt.tight_layout()
+    plt.savefig(args.output_png)
+
+
+def flip_x_and_z(tris: np.ndarray) -> np.ndarray:
+    return np.stack([tris[..., 2], tris[..., 1], tris[..., 0]], axis=-1)
+
+
+def pad_edges(arr: np.ndarray) -> np.ndarray:
+    step = arr[1] - arr[0]
+    return np.concatenate([arr[:1] - step, arr, arr[-1:] + step])
 
 
 if __name__ == "__main__":
