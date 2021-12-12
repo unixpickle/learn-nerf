@@ -47,13 +47,14 @@ class NeRFRenderer:
         :return: a dict with "fine" and "coarse" keys mapping to [N x 3] arrays of
                 RGB colors.
         """
-        t_min, t_max = self.t_range(batch)
+        t_min, t_max, mask = self.t_range(batch)
 
         coarse_key, fine_key = jax.random.split(key)
         # Evaluate the coarse model using regular stratified sampling.
         coarse_ts = RaySamples.stratified_sampling(
             t_min=t_min,
             t_max=t_max,
+            mask=mask,
             count=self.coarse_ts,
             key=coarse_key,
         )
@@ -91,14 +92,15 @@ class NeRFRenderer:
 
     def t_range(
         self, batch: jnp.ndarray, eps: float = 1e-8
-    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
         """
         For a batch of rays, compute the t_min and t_max for each ray
         according to the scene bounding box.
 
         :param batch: a batch of rays, each of [N x 2 x 3] rays.
         :param epsilon: small offset to add to ray directions to prevent NaNs.
-        :return: a tuple [t_min, t_max] of [N] arrays.
+        :return: a tuple (t_min, t_max, mask) of [N] arrays. The mask array is
+                 a boolean array, where False means not to render the ray.
         """
 
         bbox = jnp.stack([self.bbox_min, self.bbox_max])
@@ -129,16 +131,18 @@ class NeRFRenderer:
             max_t_clipped = jnp.maximum(max_t, min_t + self.min_t_range)
             real_range = jnp.stack([min_t, max_t_clipped])
             null_range = jnp.array([0, self.min_t_range])
-            return jnp.where(min_t >= max_t, null_range, real_range)
+            mask = min_t < max_t
+            return jnp.where(mask, real_range, null_range), mask
 
-        out = jax.vmap(ray_t_range)(batch)
-        return out[:, 0], out[:, 1]
+        bounds, mask = jax.vmap(ray_t_range)(batch)
+        return bounds[:, 0], bounds[:, 1], mask
 
 
 @dataclass
 class RaySamples:
     t_min: jnp.ndarray
     t_max: jnp.ndarray
+    mask: jnp.ndarray
     ts: jnp.ndarray
 
     @classmethod
@@ -146,24 +150,24 @@ class RaySamples:
         cls,
         t_min: jnp.ndarray,
         t_max: jnp.ndarray,
+        mask: jnp.ndarray,
         count: int,
         key: KeyArray,
-    ) -> jnp.ndarray:
+    ) -> "RaySamples":
         """
         :param t_min: a batch of minimum values.
         :param t_max: a batch of maximum values.
+        :param mask: a batch of masks for each ray.
         :param count: number of samples per batch element.
         :param key: RNG key for sampling.
-        :return: a [batch_size x count] batch of t values, where
-                min <= t <= max and t_i < t_{i+1} for all i for
-                each batch element.
+        :return: samples along the rays.
         """
         bin_size = ((t_max - t_min) / count)[:, None]
         bin_starts = (
             jnp.arange(0, count, dtype=jnp.float32)[None] * bin_size + t_min[:, None]
         )
         randoms = jax.random.uniform(key, bin_starts.shape) * bin_size
-        return cls(t_min=t_min, t_max=t_max, ts=bin_starts + randoms)
+        return cls(t_min=t_min, t_max=t_max, mask=mask, ts=bin_starts + randoms)
 
     def points(self, rays: jnp.ndarray) -> jnp.ndarray:
         """
@@ -194,7 +198,9 @@ class RaySamples:
         colors = jnp.concatenate(
             [rgbs, jnp.tile(background[None, None], [rgbs.shape[0], 1, 1])], axis=1
         )
-        return jnp.sum(probs[..., None] * colors, axis=1)
+        return jnp.where(
+            self.mask[:, None], jnp.sum(probs[..., None] * colors, axis=1), background
+        )
 
     def fine_sampling(
         self,
@@ -232,6 +238,7 @@ class RaySamples:
         input_samples = self.stratified_sampling(
             t_min=jnp.zeros_like(self.t_min),
             t_max=jnp.ones_like(self.t_max),
+            mask=self.mask,
             count=count,
             key=key,
         )
@@ -241,7 +248,7 @@ class RaySamples:
             combined = jnp.concatenate([self.ts, new_ts], axis=1)
             new_ts = jnp.sort(combined, axis=1)
 
-        return RaySamples(t_min=self.t_min, t_max=self.t_max, ts=new_ts)
+        return RaySamples(t_min=self.t_min, t_max=self.t_max, mask=self.mask, ts=new_ts)
 
     def starts(self) -> jnp.ndarray:
         t_mid = (self.ts[:, 1:] + self.ts[:, :-1]) / 2
