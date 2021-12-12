@@ -78,12 +78,12 @@ func main() {
 	if rotate {
 		cameraGen = &RotatingCameraGen{
 			Object: object,
-			Fov:    fov,
+			Fov:    fov * math.Pi / 180,
 			Axis:   rotationAxis.Value,
 			Offset: rotationOffset.Value,
 		}
 	} else {
-		cameraGen = &RandomCameraGen{Object: object, Fov: fov}
+		cameraGen = &RandomCameraGen{Object: object, Fov: fov * math.Pi / 180}
 	}
 
 	for i := 0; i < numImages; i++ {
