@@ -1,5 +1,5 @@
 """
-Render a view using a NeRF model.
+Apply marching cubes on a trained NeRF model to reproduce a mesh.
 """
 
 import argparse
