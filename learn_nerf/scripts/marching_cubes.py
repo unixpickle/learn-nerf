@@ -25,7 +25,7 @@ def main():
     parser.add_argument("--threshold", type=float, default=0.2)
     parser.add_argument("--model_path", type=str, default="nerf.pkl")
     parser.add_argument("metadata_json", type=str)
-    parser.add_argument("output_png", type=str)
+    parser.add_argument("output_obj", type=str)
     args = parser.parse_args()
 
     print("loading metadata...")
@@ -66,26 +66,13 @@ def main():
 
     # Adapted from https://scikit-image.org/docs/dev/auto_examples/edges/plot_marching_cubes.html.
     verts, faces, _normals, _values = skimage.measure.marching_cubes(volume, level=0)
-    verts = flip_x_and_z(verts)
 
+    verts = flip_x_and_z(verts)
     size = np.array(metadata.bbox_max) - np.array(metadata.bbox_min)
     verts *= size / args.resolution
     verts -= (np.max(verts, axis=0) + np.min(verts, axis=0)) / 2
-    max_size = np.max(verts)
 
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection="3d")
-
-    mesh = Poly3DCollection(verts[faces])
-    mesh.set_edgecolor("k")
-    ax.add_collection3d(mesh)
-
-    ax.set_xlim(-max_size, max_size)
-    ax.set_ylim(-max_size, max_size)
-    ax.set_zlim(-max_size, max_size)
-
-    plt.tight_layout()
-    plt.savefig(args.output_png)
+    write_obj(args.output_obj, verts, faces)
 
 
 def flip_x_and_z(tris: np.ndarray) -> np.ndarray:
@@ -95,6 +82,14 @@ def flip_x_and_z(tris: np.ndarray) -> np.ndarray:
 def pad_edges(arr: np.ndarray) -> np.ndarray:
     step = arr[1] - arr[0]
     return np.concatenate([arr[:1] - step, arr, arr[-1:] + step])
+
+
+def write_obj(path: str, vertices: np.ndarray, faces: np.ndarray):
+    vertex_strs = [f"v {x:.5f} {y:.5f} {z:.5f}" for x, y, z in vertices.tolist()]
+    face_strs = [f"f {x[0]+1} {x[1]+1} {x[2]+1}" for x in faces.tolist()]
+    with open(path, "w") as f:
+        f.write("\n".join(vertex_strs) + "\n")
+        f.write("\n".join(face_strs) + "\n")
 
 
 if __name__ == "__main__":
