@@ -4,6 +4,7 @@ Apply marching cubes on a trained NeRF model to reproduce a mesh.
 
 import argparse
 import pickle
+import struct
 
 import jax
 import jax.numpy as jnp
@@ -58,19 +59,20 @@ def main():
         density = density_fn(batch)
         outputs.append(density - args.threshold)
 
-    volume = np.array(
-        jnp.concatenate(outputs, axis=0).reshape([args.resolution + 2] * 3)
-    )
+    volume = np.array(jnp.concatenate(outputs, axis=0).reshape([args.resolution + 2] * 3))
 
     # Adapted from https://scikit-image.org/docs/dev/auto_examples/edges/plot_marching_cubes.html.
-    verts, faces, _normals, _values = skimage.measure.marching_cubes(volume, level=0)
+    verts, faces, normals, _values = skimage.measure.marching_cubes(volume, level=0)
 
     verts = flip_x_and_z(verts)
     size = np.array(metadata.bbox_max) - np.array(metadata.bbox_min)
     verts *= size / args.resolution
     verts -= (np.max(verts, axis=0) + np.min(verts, axis=0)) / 2
 
-    write_obj(args.output_obj, verts, faces)
+    if args.output_obj.endswith(".obj"):
+        write_obj(args.output_obj, verts, faces)
+    elif args.output_obj.endswith(".stl"):
+        write_stl(args.output_stl, verts, faces, normals)
 
 
 def flip_x_and_z(tris: np.ndarray) -> np.ndarray:
@@ -88,6 +90,20 @@ def write_obj(path: str, vertices: np.ndarray, faces: np.ndarray):
     with open(path, "w") as f:
         f.write("\n".join(vertex_strs) + "\n")
         f.write("\n".join(face_strs) + "\n")
+
+
+def write_stl(path: str, vertices: np.ndarray, faces: np.ndarray, normals: np.ndarray):
+    with open(path, "wb") as f:
+        f.write(b"\x00" * 80)
+        f.write(struct.pack("<I", len(faces)))
+        combined = np.concatenate([normals[:, None], vertices[faces]], axis=1)
+        packed_coords = struct.pack("<{'f'*12}", combined)
+
+        # Add b'\x00\x00' after each triangle.
+        rows = np.frombuffer(packed_coords, dtype=np.uint8).reshape([-1, 3 * 4 * 4])
+        padded = np.concatenate([rows, np.zeros_like(rows[:, :2])], axis=-1).tobytes()
+
+        f.write(padded)
 
 
 if __name__ == "__main__":
