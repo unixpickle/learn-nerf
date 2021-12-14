@@ -7,12 +7,10 @@ import pickle
 
 import jax
 import jax.numpy as jnp
-import matplotlib.pyplot as plt
 import numpy as np
 import skimage
 from learn_nerf.dataset import ModelMetadata
 from learn_nerf.model import NeRFModel
-from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from tqdm.auto import tqdm
 
 
