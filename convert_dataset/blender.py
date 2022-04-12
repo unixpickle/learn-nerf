@@ -56,6 +56,9 @@ def main():
             )
         shutil.copyfile(img_path, out_base + ".png")
 
+    with open(os.path.join(args.output_dir, "metadata.json"), "w") as f:
+        json.dump(dict(min=[-1.0] * 3, max=[1.0] * 3), f)
+
 
 if __name__ == "__main__":
     main()
