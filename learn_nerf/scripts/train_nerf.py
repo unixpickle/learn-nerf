@@ -60,7 +60,6 @@ def main():
     step_fn = loop.step_fn(
         jnp.array(data.metadata.bbox_min),
         jnp.array(data.metadata.bbox_max),
-        jnp.array([-1.0, -1.0, -1.0]),
     )
 
     print("training...")

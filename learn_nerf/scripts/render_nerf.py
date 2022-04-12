@@ -51,7 +51,7 @@ def main():
         fine=fine,
         coarse_params=params["coarse"],
         fine_params=params["fine"],
-        background=jnp.array([-1.0, -1.0, -1.0]),
+        background=params["background"],
         bbox_min=jnp.array(metadata.bbox_min, dtype=jnp.float32),
         bbox_max=jnp.array(metadata.bbox_max, dtype=jnp.float32),
         coarse_ts=args.coarse_samples,
@@ -59,7 +59,9 @@ def main():
     )
     render_fn = jax.jit(lambda *args: renderer.render_rays(*args))
 
-    key = jax.random.PRNGKey(args.seed if args.seed is not None else random.randint(0, 2 ** 32 - 1))
+    key = jax.random.PRNGKey(
+        args.seed if args.seed is not None else random.randint(0, 2 ** 32 - 1)
+    )
 
     images = []
     for view_json in args.view_json:
@@ -72,9 +74,9 @@ def main():
             key, this_key = jax.random.split(key)
             sub_colors = render_fn(this_key, sub_batch)
             colors = jnp.concatenate([colors, sub_colors["fine"]], axis=0)
-        image = ((np.array(colors).reshape([args.height, args.width, 3]) + 1) * 127.5).astype(
-            jnp.uint8
-        )
+        image = (
+            (np.array(colors).reshape([args.height, args.width, 3]) + 1) * 127.5
+        ).astype(jnp.uint8)
         images.append(image)
     image = np.concatenate(images, axis=1)
     Image.fromarray(image).save(args.output_png)

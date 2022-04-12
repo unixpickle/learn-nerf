@@ -40,7 +40,12 @@ class TrainLoop:
         fine_vars = fine.init(dict(params=fine_rng), example_batch, example_batch)
         self.state = train_state.TrainState.create(
             apply_fn=None,
-            params=dict(coarse=coarse_vars["params"], fine=fine_vars["params"]),
+            params=dict(
+                coarse=coarse_vars["params"],
+                fine=fine_vars["params"],
+                # Initialize background as all black.
+                background=jnp.array([-1.0, -1.0, -1.0]),
+            ),
             tx=optax.adam(lr, eps=1e-7),
         )
 
@@ -61,7 +66,7 @@ class TrainLoop:
             self.state = self.state.replace(params=pickle.load(f))
 
     def step_fn(
-        self, bbox_min: jnp.ndarray, bbox_max: jnp.ndarray, background: jnp.ndarray
+        self, bbox_min: jnp.ndarray, bbox_max: jnp.ndarray
     ) -> Callable[[jax.random.PRNGKey, jnp.ndarray], Dict[str, jnp.ndarray]]:
         """
         Create a function that steps in place and returns a logging dict.
@@ -71,7 +76,7 @@ class TrainLoop:
         def step_fn(
             state: train_state.TrainState, key: KeyArray, batch: jnp.ndarray
         ) -> Tuple[train_state.TrainState, Dict[str, jnp.ndarray]]:
-            loss_fn = partial(self.losses, key, bbox_min, bbox_max, background, batch)
+            loss_fn = partial(self.losses, key, bbox_min, bbox_max, batch)
             grad, values = jax.grad(loss_fn, has_aux=True)(state.params)
 
             def tree_norm(tree: Any) -> jnp.ndarray:
@@ -97,7 +102,6 @@ class TrainLoop:
         key: KeyArray,
         bbox_min: jnp.ndarray,
         bbox_max: jnp.ndarray,
-        background: jnp.ndarray,
         batch: jnp.ndarray,
         params: VariableDict,
     ) -> Tuple[jnp.ndarray, Dict[str, jnp.ndarray]]:
@@ -109,7 +113,7 @@ class TrainLoop:
             fine=self.fine,
             coarse_params=params["coarse"],
             fine_params=params["fine"],
-            background=background,
+            background=params["background"],
             bbox_min=bbox_min,
             bbox_max=bbox_max,
             coarse_ts=self.coarse_ts,
