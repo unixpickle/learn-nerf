@@ -94,7 +94,9 @@ class FileNeRFView(NeRFView):
     image_path: str
 
     def image(self) -> jnp.ndarray:
-        return jnp.array(Image.open(self.image_path).convert("RGB"))
+        # Premultiply alpha to prevent egregious errors at the border.
+        rgba = jnp.array(Image.open(self.image_path).convert("RGBA"))
+        return jnp.round((rgba[:, :, :3] * rgba[:, :, 3:] / 255)).astype(jnp.uint8)
 
 
 @dataclass
@@ -107,7 +109,9 @@ class ModelMetadata:
     def from_json(cls, path: str) -> "ModelMetadata":
         with open(path, "rb") as f:
             metadata = json.load(f)
-        return ModelMetadata(bbox_min=tuple(metadata["min"]), bbox_max=tuple(metadata["max"]))
+        return ModelMetadata(
+            bbox_min=tuple(metadata["min"]), bbox_max=tuple(metadata["max"])
+        )
 
 
 @dataclass
