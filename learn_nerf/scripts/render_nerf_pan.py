@@ -63,6 +63,9 @@ def main():
         args.seed if args.seed is not None else random.randint(0, 2 ** 32 - 1)
     )
 
+    scale = float(jnp.linalg.norm(renderer.bbox_min - renderer.bbox_max))
+    center = np.array((renderer.bbox_min + renderer.bbox_max) / 2)
+
     frame_arrays = []
     for frame in range(args.frames):
         print(f"sampling frame {frame}...")
@@ -70,7 +73,9 @@ def main():
         direction = (math.cos(theta), math.sin(theta), 0.0)
         view = CameraView(
             camera_direction=direction,
-            camera_origin=tuple(-x * args.t_max for x in direction),
+            camera_origin=tuple(
+                -x * scale * 3 + cx for x, cx in zip(direction, center)
+            ),
             x_axis=(math.cos(theta), -math.sin(theta), 0.0),
             y_axis=(0.0, 0.0, -1.0),
             x_fov=60.0,
