@@ -37,7 +37,7 @@ def main():
         origin = matrix[:3, -1]
         rot = matrix[:3, :3]
         x = rot @ np.array([1.0, 0.0, 0.0])
-        y = rot @ np.array([0.0, 1.0, 0.0])
+        y = rot @ np.array([0.0, -1.0, 0.0])
         z = rot @ np.array([0.0, 0.0, -1.0])
         y_fov = 2 * math.atan(math.tan(x_fov / 2) * img_height / img_width)
 
