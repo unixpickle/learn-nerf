@@ -33,6 +33,7 @@ def main():
     parser.add_argument("--frames", type=int, default=10)
     parser.add_argument("--width", type=int, default=512)
     parser.add_argument("--height", type=int, default=512)
+    parser.add_argument("--distance", type=float, default=2.0)
     parser.add_argument("--model_path", type=str, default="nerf.pkl")
     parser.add_argument("metadata_json", type=str)
     parser.add_argument("output_png", type=str)
@@ -74,7 +75,7 @@ def main():
         view = CameraView(
             camera_direction=direction,
             camera_origin=tuple(
-                -x * scale * 3 + cx for x, cx in zip(direction, center)
+                -x * scale * args.distance + cx for x, cx in zip(direction, center)
             ),
             x_axis=(math.cos(theta), -math.sin(theta), 0.0),
             y_axis=(0.0, 0.0, -1.0),
