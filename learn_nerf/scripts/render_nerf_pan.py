@@ -77,7 +77,7 @@ def main():
             camera_origin=tuple(
                 -x * scale * args.distance + cx for x, cx in zip(direction, center)
             ),
-            x_axis=(math.cos(theta), -math.sin(theta), 0.0),
+            x_axis=(-math.sin(theta), math.cos(theta), 0.0),
             y_axis=(0.0, 0.0, -1.0),
             x_fov=60.0 * math.pi / 180,
             y_fov=60.0 * math.pi / 180,
