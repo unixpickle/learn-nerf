@@ -91,7 +91,7 @@ class NeRFRenderer:
         return dict(coarse=coarse_outputs, fine=fine_outputs)
 
     def t_range(
-        self, batch: jnp.ndarray, eps: float = 1e-8
+        self, batch: jnp.ndarray, epsilon: float = 1e-8
     ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
         """
         For a batch of rays, compute the t_min and t_max for each ray
@@ -102,39 +102,12 @@ class NeRFRenderer:
         :return: a tuple (t_min, t_max, mask) of [N] arrays. The mask array is
                  a boolean array, where False means not to render the ray.
         """
-
         bbox = jnp.stack([self.bbox_min, self.bbox_max])
-
-        def ray_t_range(ray: jnp.ndarray):
-            origin = ray[0]
-            direction = ray[1]
-
-            # Find timesteps of collision on each axis:
-            # o+t*d=b
-            # t*d=b-o
-            # t=(b-o)/d
-            offsets = bbox - origin
-            ts = offsets / (direction + eps)
-
-            # Sort so that the minimum t always comes first.
-            ts = jnp.concatenate(
-                [
-                    jnp.min(ts, axis=0, keepdims=True),
-                    jnp.max(ts, axis=0, keepdims=True),
-                ],
-                axis=0,
+        bounds, mask = jax.vmap(
+            lambda ray: ray_t_range(
+                bbox, ray, min_t_range=self.min_t_range, epsilon=epsilon
             )
-
-            # Find overlapping bounds and apply constraints.
-            min_t = jnp.maximum(0, jnp.max(ts[0]))
-            max_t = jnp.min(ts[1])
-            max_t_clipped = jnp.maximum(max_t, min_t + self.min_t_range)
-            real_range = jnp.stack([min_t, max_t_clipped])
-            null_range = jnp.array([0, self.min_t_range])
-            mask = min_t < max_t
-            return jnp.where(mask, real_range, null_range), mask
-
-        bounds, mask = jax.vmap(ray_t_range)(batch)
+        )(batch)
         return bounds[:, 0], bounds[:, 1], mask
 
 
@@ -282,3 +255,49 @@ class RaySamples:
 
     def _const_vec(self, x: float) -> jnp.ndarray:
         return jnp.tile(jnp.array(x).reshape([1, 1]), [self.ts.shape[0], 1])
+
+
+def ray_t_range(
+    bbox: jnp.ndarray,
+    ray: jnp.ndarray,
+    min_t_range: float = 1e-3,
+    epsilon: float = 1e-8,
+) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    """
+    For a single ray, compute the t_min and t_max for it and return a mask
+    indicating whether on not the ray intersects the bounding box at all.
+
+    :param bbox: a [2 x 3] array of (bbox_min, bbox_max).
+    :param ray: a [2 x 3] array containing ray (origin, direction).
+    :param min_t_range: the minimum space between t_min and t_max.
+    :param epsilon: small offset to add to ray directions to prevent NaNs.
+    :return: a tuple (ts, mask) where ts is of shape [2] storing (t_min, t_max)
+             and mask is a boolean scalar.
+    """
+    origin = ray[0]
+    direction = ray[1]
+
+    # Find timesteps of collision on each axis:
+    # o+t*d=b
+    # t*d=b-o
+    # t=(b-o)/d
+    offsets = bbox - origin
+    ts = offsets / (direction + epsilon)
+
+    # Sort so that the minimum t always comes first.
+    ts = jnp.concatenate(
+        [
+            jnp.min(ts, axis=0, keepdims=True),
+            jnp.max(ts, axis=0, keepdims=True),
+        ],
+        axis=0,
+    )
+
+    # Find overlapping bounds and apply constraints.
+    min_t = jnp.maximum(0, jnp.max(ts[0]))
+    max_t = jnp.min(ts[1])
+    max_t_clipped = jnp.maximum(max_t, min_t + min_t_range)
+    real_range = jnp.stack([min_t, max_t_clipped])
+    null_range = jnp.array([0, min_t_range])
+    mask = min_t < max_t
+    return jnp.where(mask, real_range, null_range), mask
