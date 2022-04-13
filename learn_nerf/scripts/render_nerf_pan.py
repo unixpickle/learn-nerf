@@ -78,8 +78,8 @@ def main():
             ),
             x_axis=(math.cos(theta), -math.sin(theta), 0.0),
             y_axis=(0.0, 0.0, -1.0),
-            x_fov=60.0,
-            y_fov=60.0,
+            x_fov=60.0 * math.pi / 180,
+            y_fov=60.0 * math.pi / 180,
         )
         rays = view.bare_rays(args.width, args.height)
         colors = jnp.zeros([0, 3])
