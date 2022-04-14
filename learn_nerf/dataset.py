@@ -96,7 +96,7 @@ class FileNeRFView(NeRFView):
     def image(self) -> jnp.ndarray:
         # Premultiply alpha to prevent egregious errors at the border.
         rgba = jnp.array(Image.open(self.image_path).convert("RGBA"))
-        return jnp.round((rgba[:, :, :3] * rgba[:, :, 3:] / 255)).astype(jnp.uint8)
+        return jnp.round((rgba[:, :, :3] * (rgba[:, :, 3:] / 255))).astype(jnp.uint8)
 
 
 @dataclass
