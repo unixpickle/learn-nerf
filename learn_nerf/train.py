@@ -28,6 +28,9 @@ class TrainLoop:
         lr: float,
         coarse_ts: int,
         fine_ts: int,
+        adam_b1: float = 0.9,
+        adam_b2: float = 0.999,
+        adam_eps: float = 1e-7,
     ):
         self.coarse = coarse
         self.fine = fine
@@ -46,7 +49,7 @@ class TrainLoop:
                 # Initialize background as all black.
                 background=jnp.array([-1.0, -1.0, -1.0]),
             ),
-            tx=optax.adam(lr, eps=1e-7),
+            tx=optax.adam(lr, b1=adam_b1, b2=adam_b2, eps=adam_eps),
         )
 
     def save(self, path: str):

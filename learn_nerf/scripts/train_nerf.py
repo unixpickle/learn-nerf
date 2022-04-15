@@ -9,6 +9,7 @@ import random
 import jax
 import jax.numpy as jnp
 from learn_nerf.dataset import load_dataset
+from learn_nerf.instant_ngp import InstantNGPModel
 from learn_nerf.model import NeRFModel
 from learn_nerf.train import TrainLoop
 
@@ -30,6 +31,7 @@ def main():
     parser.add_argument("--save_interval", type=int, default=1000)
     parser.add_argument("--save_path", type=str, default="nerf.pkl")
     parser.add_argument("--one_view", action="store_true")
+    parser.add_argument("--instant_ngp", action="store_true")
     parser.add_argument("data_dir", type=str)
     args = parser.parse_args()
 
@@ -44,8 +46,24 @@ def main():
     init_key, key = jax.random.split(key)
 
     print("creating model and train loop...")
-    coarse = NeRFModel()
-    fine = NeRFModel()
+    if args.instant_ngp:
+        coarse = InstantNGPModel(
+            table_sizes=[2 ** 18] * 6,
+            grid_sizes=[2 ** (4 + i // 2) for i in range(6)],
+            bbox_min=jnp.array(data.metadata.bbox_min),
+            bbox_max=jnp.array(data.metadata.bbox_max),
+        )
+        fine = InstantNGPModel(
+            table_sizes=[2 ** 18] * 16,
+            grid_sizes=[2 ** (4 + i // 2) for i in range(16)],
+            bbox_min=jnp.array(data.metadata.bbox_min),
+            bbox_max=jnp.array(data.metadata.bbox_max),
+        )
+        train_kwargs = dict(adam_eps=1e-15, adam_b1=0.9, adam_b2=0.99)
+    else:
+        coarse = NeRFModel()
+        fine = NeRFModel()
+        train_kwargs = dict()
     loop = TrainLoop(
         coarse,
         fine,
@@ -53,6 +71,7 @@ def main():
         lr=args.lr,
         coarse_ts=args.coarse_samples,
         fine_ts=args.fine_samples,
+        **train_kwargs,
     )
     if os.path.exists(args.save_path):
         print(f"loading from checkpoint: {args.save_path}")
