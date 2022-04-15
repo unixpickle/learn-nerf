@@ -5,7 +5,7 @@ import jax
 import jax.numpy as jnp
 from jax._src.prng import PRNGKeyArray as KeyArray
 
-from .model import NeRFModel
+from .model import ModelBase
 
 
 @dataclass
@@ -24,8 +24,8 @@ class NeRFRenderer:
     :param fine_ts: additional samples per ray for fine model.
     """
 
-    coarse: NeRFModel
-    fine: NeRFModel
+    coarse: ModelBase
+    fine: ModelBase
     coarse_params: Any
     fine_params: Any
     background: jnp.ndarray

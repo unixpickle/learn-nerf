@@ -10,8 +10,7 @@ from flax.core.scope import VariableDict
 from flax.training import train_state
 from jax._src.prng import PRNGKeyArray as KeyArray
 
-from .dataset import Vec3
-from .model import NeRFModel
+from .model import ModelBase
 from .render import NeRFRenderer
 
 
@@ -22,8 +21,8 @@ class TrainLoop:
 
     def __init__(
         self,
-        coarse: NeRFModel,
-        fine: NeRFModel,
+        coarse: ModelBase,
+        fine: ModelBase,
         init_rng: KeyArray,
         lr: float,
         coarse_ts: int,

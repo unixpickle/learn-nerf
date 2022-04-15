@@ -11,8 +11,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from learn_nerf.dataset import CameraView, ModelMetadata
-from learn_nerf.model import NeRFModel
 from learn_nerf.render import NeRFRenderer
+from learn_nerf.scripts.train_nerf import add_model_args, create_model
 from PIL import Image
 from tqdm.auto import tqdm
 
@@ -35,6 +35,7 @@ def main():
     parser.add_argument("--height", type=int, default=512)
     parser.add_argument("--distance", type=float, default=2.0)
     parser.add_argument("--model_path", type=str, default="nerf.pkl")
+    add_model_args(parser)
     parser.add_argument("metadata_json", type=str)
     parser.add_argument("output_png", type=str)
     args = parser.parse_args()
@@ -42,8 +43,7 @@ def main():
     metadata = ModelMetadata.from_json(args.metadata_json)
 
     print("loading model...")
-    coarse = NeRFModel()
-    fine = NeRFModel()
+    coarse, fine, _ = create_model(args, metadata)
     with open(args.model_path, "rb") as f:
         params = pickle.load(f)
 

@@ -9,10 +9,10 @@ import flax.linen as nn
 import jax
 import jax.numpy as jnp
 
-from .model import sinusoidal_emb
+from .model import ModelBase, sinusoidal_emb
 
 
-class InstantNGPModel(nn.Module):
+class InstantNGPModel(ModelBase):
     """
     A NeRF model that utilizes a multilevel hash table.
     """
@@ -32,15 +32,6 @@ class InstantNGPModel(nn.Module):
     def __call__(
         self, x: jnp.ndarray, d: jnp.ndarray
     ) -> Tuple[jnp.ndarray, jnp.ndarray]:
-        """
-        Predict densities and RGBs for sampled points on rays.
-
-        :param x: an [N x 3] array of coordinates.
-        :param d: an [N x 3] array of ray directions.
-        :return: a tuple (density, rgb):
-                 - density: an [N x 1] array of non-negative densities.
-                 - rgb: an [N x 3] array of RGB values in [-1, 1].
-        """
         d_emb = sinusoidal_emb(d, self.d_freqs)
         out = MultiresHashTableEncoding(
             table_sizes=self.table_sizes,

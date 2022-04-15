@@ -11,7 +11,7 @@ import jax.numpy as jnp
 import numpy as np
 import skimage
 from learn_nerf.dataset import ModelMetadata
-from learn_nerf.model import NeRFModel
+from learn_nerf.scripts.train_nerf import add_model_args, create_model
 from tqdm.auto import tqdm
 
 
@@ -23,6 +23,7 @@ def main():
     )
     parser.add_argument("--threshold", type=float, default=0.2)
     parser.add_argument("--model_path", type=str, default="nerf.pkl")
+    add_model_args(parser)
     parser.add_argument("metadata_json", type=str)
     parser.add_argument("output_obj", type=str)
     args = parser.parse_args()
@@ -31,7 +32,7 @@ def main():
     metadata = ModelMetadata.from_json(args.metadata_json)
 
     print("loading model...")
-    fine = NeRFModel()
+    _, fine, _ = create_model(args, metadata)
     with open(args.model_path, "rb") as f:
         params = pickle.load(f)["fine"]
     density_fn = jax.jit(
@@ -59,7 +60,9 @@ def main():
         density = density_fn(batch)
         outputs.append(density - args.threshold)
 
-    volume = np.array(jnp.concatenate(outputs, axis=0).reshape([args.resolution + 2] * 3))
+    volume = np.array(
+        jnp.concatenate(outputs, axis=0).reshape([args.resolution + 2] * 3)
+    )
 
     # Adapted from https://scikit-image.org/docs/dev/auto_examples/edges/plot_marching_cubes.html.
     verts, faces, normals, _values = skimage.measure.marching_cubes(volume, level=0)
