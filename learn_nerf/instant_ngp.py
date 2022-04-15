@@ -140,7 +140,7 @@ class HashTableEncoding(nn.Module):
         )
 
 
-def hash_table_lookup(table: jnp.ndarray, coords: jnp.ndarray):
+def hash_table_lookup(table: jnp.ndarray, coords: jnp.ndarray) -> jnp.ndarray:
     """
     Lookup the integer coordinates in a hash table.
 
@@ -153,4 +153,4 @@ def hash_table_lookup(table: jnp.ndarray, coords: jnp.ndarray):
     indices = (
         coords[:, 0] ^ (19_349_663 * coords[:, 1]) ^ (83_492_791 * coords[:, 2])
     ) % table.shape[0]
-    return table[indices]
+    return jnp.array(table)[indices]
