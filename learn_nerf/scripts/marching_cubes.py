@@ -54,6 +54,7 @@ def main():
         ]
     )
 
+    print("computing densities...")
     outputs = []
     for i in tqdm(range(0, input_coords.shape[0], args.batch_size)):
         batch = input_coords[i : i + args.batch_size]
