@@ -3,8 +3,10 @@ Apply marching cubes on a trained NeRF model to reproduce a mesh.
 """
 
 import argparse
+import math
 import pickle
 import struct
+from typing import Sequence
 
 import jax
 import jax.numpy as jnp
@@ -21,7 +23,7 @@ def main():
     parser.add_argument(
         "--resolution", type=int, default=32, help="steps along each direction"
     )
-    parser.add_argument("--threshold", type=float, default=0.2)
+    parser.add_argument("--threshold", type=float, default=0.9)
     parser.add_argument("--model_path", type=str, default="nerf.pkl")
     add_model_args(parser)
     parser.add_argument("metadata_json", type=str)
@@ -35,38 +37,36 @@ def main():
     _, fine, _ = create_model(args, metadata)
     with open(args.model_path, "rb") as f:
         params = pickle.load(f)["fine"]
+
     density_fn = jax.jit(
-        lambda coords: fine.apply(dict(params=params), coords, jnp.zeros_like(coords))[
-            0
-        ]
+        lambda coords: (
+            1
+            - jnp.exp(
+                -fine.apply(dict(params=params), coords, jnp.zeros_like(coords))[0]
+            )
+        )
     )
 
-    input_steps = [
-        pad_edges(np.linspace(bbox_min, bbox_max, num=args.resolution))
-        for bbox_min, bbox_max in zip(metadata.bbox_min, metadata.bbox_max)
-    ]
-    input_coords = jnp.array(
-        [
-            [x, y, z]
-            for z in input_steps[2]
-            for y in input_steps[1]
-            for x in input_steps[0]
-        ]
-    )
+    input_coords = grid_coordinates(
+        bbox_min=metadata.bbox_min,
+        bbox_max=metadata.bbox_max,
+        grid_size=args.resolution,
+    ).reshape([-1, 3])
 
     print("computing densities...")
     outputs = []
     for i in tqdm(range(0, input_coords.shape[0], args.batch_size)):
         batch = input_coords[i : i + args.batch_size]
         density = density_fn(batch)
-        outputs.append(density - args.threshold)
+        outputs.append(density)
 
-    volume = np.array(
-        jnp.concatenate(outputs, axis=0).reshape([args.resolution + 2] * 3)
-    )
+    volume = np.array(jnp.concatenate(outputs, axis=0).reshape([args.resolution] * 3))
+    volume = np.pad(volume, 1, mode="constant", constant_values=0)
 
     # Adapted from https://scikit-image.org/docs/dev/auto_examples/edges/plot_marching_cubes.html.
-    verts, faces, normals, _values = skimage.measure.marching_cubes(volume, level=0)
+    verts, faces, normals, _values = skimage.measure.marching_cubes(
+        volume, level=args.threshold
+    )
 
     verts = flip_x_and_z(verts)
     size = np.array(metadata.bbox_max) - np.array(metadata.bbox_min)
@@ -83,9 +83,16 @@ def flip_x_and_z(tris: np.ndarray) -> np.ndarray:
     return np.stack([tris[..., 2], tris[..., 1], tris[..., 0]], axis=-1)
 
 
-def pad_edges(arr: np.ndarray) -> np.ndarray:
-    step = arr[1] - arr[0]
-    return np.concatenate([arr[:1] - step, arr, arr[-1:] + step])
+def grid_coordinates(
+    bbox_min: Sequence[float], bbox_max: Sequence[float], grid_size: int
+) -> np.ndarray:
+    result = np.empty([grid_size] * 3 + [3])
+    for i, (bbox_min, bbox_max) in enumerate(zip(bbox_min, bbox_max)):
+        sub_size = [grid_size if i == j else 1 for j in range(3)]
+        result[..., i] = np.linspace(bbox_min, bbox_max, num=grid_size).reshape(
+            sub_size
+        )
+    return result
 
 
 def write_obj(path: str, vertices: np.ndarray, faces: np.ndarray):
