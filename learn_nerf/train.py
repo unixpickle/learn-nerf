@@ -30,11 +30,15 @@ class TrainLoop:
         adam_b1: float = 0.9,
         adam_b2: float = 0.999,
         adam_eps: float = 1e-7,
+        loss_weights: Dict[str, float] = None,
     ):
         self.coarse = coarse
         self.fine = fine
         self.coarse_ts = coarse_ts
         self.fine_ts = fine_ts
+        self.loss_weights = (
+            loss_weights if loss_weights is not None else default_loss_weights()
+        )
 
         coarse_rng, fine_rng = jax.random.split(init_rng)
         example_batch = jnp.array([[0.0, 0.0, 0.0]])
@@ -122,9 +126,22 @@ class TrainLoop:
             fine_ts=self.fine_ts,
         )
 
-        predictions = renderer.render_rays(key, batch[:, :2])
+        render_out = renderer.render_rays(key, batch[:, :2])
         targets = batch[:, 2]
-        coarse_loss = jnp.mean((predictions["coarse"] - targets) ** 2)
-        fine_loss = jnp.mean((predictions["fine"] - targets) ** 2)
+        coarse_loss = jnp.mean((render_out["coarse"] - targets) ** 2)
+        fine_loss = jnp.mean((render_out["fine"] - targets) ** 2)
 
-        return coarse_loss + fine_loss, dict(coarse=coarse_loss, fine=fine_loss)
+        loss_dict = dict(coarse=coarse_loss, fine=fine_loss)
+        total_loss = coarse_loss + fine_loss
+        for name, loss in render_out["coarse_aux"]:
+            loss_dict[f"coarse_{name}"] = loss
+            total_loss = total_loss + self.loss_weights[name] * loss
+        for name, loss in render_out["fine_aux"]:
+            loss_dict[f"fine_{name}"] = loss
+            total_loss = total_loss + self.loss_weights[name] * loss
+
+        return total_loss, loss_dict
+
+
+def default_loss_weights() -> Dict[str, float]:
+    return {}

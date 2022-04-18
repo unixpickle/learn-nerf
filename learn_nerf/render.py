@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Tuple, Union
 
 import jax
 import jax.numpy as jnp
@@ -40,12 +40,13 @@ class NeRFRenderer:
         self,
         key: KeyArray,
         batch: jnp.ndarray,
-    ) -> Dict[str, jnp.ndarray]:
+    ) -> Dict[str, Union[str, jnp.ndarray]]:
         """
         :param key: an RNG key for sampling points along rays.
         :param batch: an [N x 2 x 3] batch of (origin, direction) rays.
         :return: a dict with "fine" and "coarse" keys mapping to [N x 3] arrays of
-                RGB colors.
+                 RGB colors. Additionally, there are "fine_aux" and "coarse_aux"
+                 keys mapping to dicts of (averaged) auxiliary losses.
         """
         t_min, t_max, mask = self.t_range(batch)
 
@@ -58,37 +59,34 @@ class NeRFRenderer:
             count=self.coarse_ts,
             key=coarse_key,
         )
-        all_points = coarse_ts.points(batch)
-        direction_batch = jnp.tile(batch[:, 1:2], [1, all_points.shape[1], 1])
-        coarse_densities, coarse_rgbs = self.coarse.apply(
-            dict(params=self.coarse_params),
-            all_points.reshape([-1, 3]),
-            direction_batch.reshape([-1, 3]),
-        )
-        coarse_densities = coarse_densities.reshape(all_points.shape[:-1])
-        coarse_rgbs = coarse_rgbs.reshape(all_points.shape)
-        coarse_outputs = coarse_ts.render_rays(
-            coarse_densities, coarse_rgbs, self.background
+        coarse_out, coarse_aux = render_rays(
+            model=self.coarse,
+            params=self.coarse_params,
+            background=self.background,
+            batch=batch,
+            ts=coarse_ts,
         )
 
         # Evaluate the fine model using a combined set of points.
         fine_ts = coarse_ts.fine_sampling(
             count=self.fine_ts,
             key=fine_key,
-            densities=jax.lax.stop_gradient(coarse_densities),
+            densities=jax.lax.stop_gradient(coarse_out["densities"]),
         )
-        all_points = fine_ts.points(batch)
-        direction_batch = jnp.tile(batch[:, 1:2], [1, all_points.shape[1], 1])
-        fine_densities, fine_rgbs = self.fine.apply(
-            dict(params=self.fine_params),
-            all_points.reshape([-1, 3]),
-            direction_batch.reshape([-1, 3]),
+        fine_out, fine_aux = render_rays(
+            model=self.fine,
+            params=self.fine_params,
+            background=self.background,
+            batch=batch,
+            ts=fine_ts,
         )
-        fine_densities = fine_densities.reshape(all_points.shape[:-1])
-        fine_rgbs = fine_rgbs.reshape(all_points.shape)
-        fine_outputs = fine_ts.render_rays(fine_densities, fine_rgbs, self.background)
 
-        return dict(coarse=coarse_outputs, fine=fine_outputs)
+        return dict(
+            coarse=coarse_out["outputs"],
+            fine=fine_out["outputs"],
+            coarse_aux=coarse_aux,
+            fine_aux=fine_aux,
+        )
 
     def t_range(
         self, batch: jnp.ndarray, epsilon: float = 1e-8
@@ -255,6 +253,54 @@ class RaySamples:
 
     def _const_vec(self, x: float) -> jnp.ndarray:
         return jnp.tile(jnp.array(x).reshape([1, 1]), [self.ts.shape[0], 1])
+
+
+def render_rays(
+    model: ModelBase,
+    params: Any,
+    background: jnp.ndarray,
+    batch: jnp.ndarray,
+    ts: "RaySamples",
+) -> Tuple[Dict[str, jnp.ndarray], Dict[str, jnp.ndarray]]:
+    """
+    Render a batch of rays using a model.
+
+    :param model: the NeRF model to run.
+    :param params: the parameter object for the model.
+    :param background: the [3] array of background color.
+    :param batch: an [N x 2 x 3] array of (origin, direction) rays.
+    :param ts: samples along the rays.
+    :return: a tuple (out, aux).
+             - out: a dict of results with the following keys:
+                    - outputs: an [N x 3] array of RGB colors.
+                    - rgbs: an [N x T x 3] array of per-point RGB outputs.
+                    - densities: an [N x T] array of model density outputs.
+             - aux: a dict mapping loss names to (scalar) means of the losses
+                    across all unmasked rays.
+    """
+    all_points = ts.points(batch)
+    direction_batch = jnp.tile(batch[:, 1:2], [1, all_points.shape[1], 1])
+    densities, rgbs, aux = model.apply(
+        dict(params=params),
+        all_points.reshape([-1, 3]),
+        direction_batch.reshape([-1, 3]),
+    )
+    densities = densities.reshape(all_points.shape[:-1])
+    rgbs = rgbs.reshape(all_points.shape)
+    outputs = ts.render_rays(densities, rgbs, background)
+
+    mask_sum = jnp.maximum(1e-8, jnp.sum(ts.mask.astype(densities.dtype)))
+    aux = {
+        k: (
+            jnp.sum(
+                jnp.where(ts.mask, jnp.mean(v.reshape(densities.shape), axis=-1), 0.0)
+            )
+            / mask_sum
+        )
+        for k, v in aux.items()
+    }
+
+    return dict(outputs=outputs, rgbs=rgbs, densities=densities), aux
 
 
 def ray_t_range(

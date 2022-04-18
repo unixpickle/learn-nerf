@@ -3,7 +3,7 @@ A simple JAX re-implementation of Instant NGP:
 https://arxiv.org/abs/2201.05989.
 """
 
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
 import flax.linen as nn
 import jax
@@ -31,7 +31,7 @@ class InstantNGPModel(ModelBase):
     @nn.compact
     def __call__(
         self, x: jnp.ndarray, d: jnp.ndarray
-    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    ) -> Tuple[jnp.ndarray, jnp.ndarray, Dict[str, jnp.ndarray]]:
         d_emb = sinusoidal_emb(d, self.d_freqs)
         out = MultiresHashTableEncoding(
             table_sizes=self.table_sizes,
@@ -48,7 +48,7 @@ class InstantNGPModel(ModelBase):
         for _ in range(self.color_layers):
             out = nn.relu(nn.Dense(self.hidden_dim)(out))
         color = nn.tanh(nn.Dense(3)(out))
-        return density, color
+        return density, color, {}
 
 
 class MultiresHashTableEncoding(nn.Module):

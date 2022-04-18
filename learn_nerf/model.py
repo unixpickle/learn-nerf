@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Dict, Tuple
 
 import flax.linen as nn
 import jax.numpy as jnp
@@ -11,16 +11,19 @@ class ModelBase(nn.Module):
 
     def __call__(
         self, x: jnp.ndarray, d: jnp.ndarray
-    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    ) -> Tuple[jnp.ndarray, jnp.ndarray, Dict[str, jnp.ndarray]]:
         """
         Predict densities and RGBs for sampled points on rays.
 
         :param x: an [N x 3] array of coordinates.
         :param d: an [N x 3] array of ray directions.
-        :return: a tuple (density, rgb):
+        :return: a tuple (density, rgb, aux_losses):
                  - density: an [N x 1] array of non-negative densities.
                  - rgb: an [N x 3] array of RGB values in [-1, 1].
+                 - aux_losses: a collection of [N] arrays containing per-ray
+                               auxiliary losses.
         """
+        _ = x, d
         raise NotImplementedError
 
 
@@ -39,7 +42,7 @@ class NeRFModel(ModelBase):
     @nn.compact
     def __call__(
         self, x: jnp.ndarray, d: jnp.ndarray
-    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    ) -> Tuple[jnp.ndarray, jnp.ndarray, Dict[str, jnp.ndarray]]:
         x_emb = sinusoidal_emb(x, self.x_freqs)
         d_emb = sinusoidal_emb(d, self.d_freqs)
 
@@ -56,7 +59,7 @@ class NeRFModel(ModelBase):
         z = nn.relu(nn.Dense(self.color_layer_dim)(z))
         rgb = nn.tanh(nn.Dense(3)(z))
 
-        return density, rgb
+        return density, rgb, {}
 
 
 def sinusoidal_emb(coords: jnp.ndarray, freqs: int) -> jnp.ndarray:
