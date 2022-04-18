@@ -34,6 +34,7 @@ def main():
     parser.add_argument("--width", type=int, default=512)
     parser.add_argument("--height", type=int, default=512)
     parser.add_argument("--distance", type=float, default=2.0)
+    parser.add_argument("--random_axis", action="store_true")
     parser.add_argument("--model_path", type=str, default="nerf.pkl")
     add_model_args(parser)
     parser.add_argument("metadata_json", type=str)
@@ -67,18 +68,28 @@ def main():
     scale = float(jnp.linalg.norm(renderer.bbox_min - renderer.bbox_max))
     center = np.array((renderer.bbox_min + renderer.bbox_max) / 2)
 
+    rot_axis = np.array([0.0, 0.0, -1.0])
+    rot_basis_1 = np.array([1.0, 0.0, 0.0])
+    if args.random_axis:
+        rot_axis = np.random.normal(size=(3,))
+        rot_axis /= np.linalg.norm(rot_axis)
+        rot_basis_1 = np.array([-rot_axis[2], 0.0, rot_axis[0]])
+        rot_basis_1 /= np.linalg.norm(rot_basis_1)
+    rot_basis_2 = np.cross(rot_axis, rot_basis_1)
+
     frame_arrays = []
     for frame in range(args.frames):
         print(f"sampling frame {frame}...")
         theta = (frame / args.frames) * math.pi * 2
-        direction = (math.cos(theta), math.sin(theta), 0.0)
+        direction = np.cos(theta) * rot_basis_1 + np.sin(theta) * rot_basis_2
         view = CameraView(
-            camera_direction=direction,
-            camera_origin=tuple(
-                -x * scale * args.distance + cx for x, cx in zip(direction, center)
+            camera_direction=tuple(direction),
+            camera_origin=tuple(-direction * scale * args.distance + center),
+            x_axis=tuple(
+                np.cos(theta + np.pi / 2) * rot_basis_1
+                + np.sin(theta + np.pi / 2) * rot_basis_2
             ),
-            x_axis=(math.sin(theta), -math.cos(theta), 0.0),
-            y_axis=(0.0, 0.0, -1.0),
+            y_axis=tuple(rot_axis),
             x_fov=60.0 * math.pi / 180,
             y_fov=60.0 * math.pi / 180,
         )
