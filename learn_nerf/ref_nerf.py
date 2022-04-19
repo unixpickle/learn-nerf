@@ -39,9 +39,7 @@ class RefNERFBase(ModelBase):
             return out[:, 0].sum(), out
 
         real_normal, spatial_out = jax.grad(spatial_fn, has_aux=True)(x)
-        real_normal = real_normal / (
-            jnp.linalg.norm(real_normal, axis=-1, keepdims=True) + 1e-8
-        )
+        real_normal = _safe_normalize(real_normal)
 
         density, diffuse_color, spectral, roughness, normal, bottleneck = jnp.split(
             spatial_out, np.cumsum([1, 3, 1, 1, 3]).tolist(), axis=-1
@@ -50,7 +48,7 @@ class RefNERFBase(ModelBase):
         diffuse_color = nn.sigmoid(diffuse_color)
         spectral = nn.sigmoid(spectral)
         roughness = nn.softplus(roughness)
-        normal = normal / (jnp.linalg.norm(normal, axis=-1, keepdims=True) + 1e-8)
+        normal = _safe_normalize(normal)
 
         reflection = d - 2 * normal * jnp.sum(d * normal, axis=-1, keepdims=True)
         reflection_enc = integrated_directional_encoding(
@@ -276,3 +274,9 @@ def spherical_harmonic(sh_degree: int, coords: jnp.ndarray) -> jnp.ndarray:
 
     populate()
     return jnp.stack([x for x in out if x is not None], axis=1)
+
+
+def _safe_normalize(vs: jnp.ndarray, eps=1e-8) -> jnp.ndarray:
+    # Using jnp.linalg.norm is not safe at exactly 0.
+    # https://github.com/google/jax/issues/3058
+    return vs / jnp.sqrt(jnp.sum(vs ** 2, axis=-1, keepdims=True) + eps)
