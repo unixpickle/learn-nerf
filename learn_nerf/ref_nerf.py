@@ -39,16 +39,18 @@ class RefNERFBase(ModelBase):
             return out[:, 0].sum(), out
 
         real_normal, spatial_out = jax.grad(spatial_fn, has_aux=True)(x)
-        real_normal = real_normal / jnp.linalg.norm(real_normal, axis=-1, keepdims=True)
+        real_normal = real_normal / (
+            jnp.linalg.norm(real_normal, axis=-1, keepdims=True) + 1e-8
+        )
 
         density, diffuse_color, spectral, roughness, normal, bottleneck = jnp.split(
             spatial_out, np.cumsum([1, 3, 1, 1, 3]).tolist(), axis=-1
         )
         density = jnp.exp(density)
-        diffuse_color = nn.tanh(diffuse_color)
+        diffuse_color = nn.sigmoid(diffuse_color)
         spectral = nn.sigmoid(spectral)
         roughness = nn.softplus(roughness)
-        normal = normal / jnp.linalg.norm(normal, axis=-1, keepdims=True)
+        normal = normal / (jnp.linalg.norm(normal, axis=-1, keepdims=True) + 1e-8)
 
         reflection = d - 2 * normal * jnp.sum(d * normal, axis=-1, keepdims=True)
         reflection_enc = integrated_directional_encoding(
@@ -57,10 +59,14 @@ class RefNERFBase(ModelBase):
         normal_dot = jnp.sum(-d * normal, axis=-1, keepdims=True)
         dir_input = jnp.concatenate([bottleneck, reflection_enc, normal_dot], axis=1)
         dir_output = self.directional_block(dir_input)
-        spectral_color = nn.tanh(dir_output)
+        spectral_color = nn.sigmoid(dir_output)
 
-        full_color = linear_rgb_to_srgb(
-            spectral_color * spectral + diffuse_color * (1 - spectral)
+        full_color = (
+            linear_rgb_to_srgb(
+                spectral_color * spectral + diffuse_color * (1 - spectral)
+            )
+            * 2
+            - 1
         )
         aux_losses = dict(
             normal_mse=jnp.sum((normal - real_normal) ** 2, axis=-1),
