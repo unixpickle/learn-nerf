@@ -133,10 +133,10 @@ class TrainLoop:
 
         loss_dict = dict(coarse=coarse_loss, fine=fine_loss)
         total_loss = coarse_loss + fine_loss
-        for name, loss in render_out["coarse_aux"]:
+        for name, loss in render_out["coarse_aux"].items():
             loss_dict[f"coarse_{name}"] = loss
             total_loss = total_loss + self.loss_weights[name] * loss
-        for name, loss in render_out["fine_aux"]:
+        for name, loss in render_out["fine_aux"].items():
             loss_dict[f"fine_{name}"] = loss
             total_loss = total_loss + self.loss_weights[name] * loss
 
