@@ -173,6 +173,25 @@ class RaySamples:
             self.mask[:, None], jnp.sum(probs[..., None] * colors, axis=1), background
         )
 
+    def average_aux_losses(
+        self,
+        densities: jnp.ndarray,
+        aux: Dict[str, jnp.ndarray],
+    ) -> jnp.ndarray:
+        """
+        Compute an average of auxiliary losses over each ray, weighted by the
+        volume density.
+
+        :param densities: an [N x T] batch of non-negative density outputs.
+        :param aux: a dict mapping loss names to [N x T] batches.
+        :return: a dict mapping loss names to mean losses.
+        """
+        probs = self.termination_probs(densities)[:, :-1]
+        return {
+            k: jnp.sum(jnp.where(self.mask[:, None], jnp.sum(v * probs, axis=-1), 0.0))
+            for k, v in aux.items()
+        }
+
     def fine_sampling(
         self,
         count: int,
@@ -287,20 +306,12 @@ def render_rays(
     )
     densities = densities.reshape(all_points.shape[:-1])
     rgbs = rgbs.reshape(all_points.shape)
+    aux = {k: v.reshape(densities.shape) for k, v in aux.items()}
+
     outputs = ts.render_rays(densities, rgbs, background)
+    aux_mean = ts.average_aux_losses(densities, aux)
 
-    mask_sum = jnp.maximum(1e-8, jnp.sum(ts.mask.astype(densities.dtype)))
-    aux = {
-        k: (
-            jnp.sum(
-                jnp.where(ts.mask, jnp.mean(v.reshape(densities.shape), axis=-1), 0.0)
-            )
-            / mask_sum
-        )
-        for k, v in aux.items()
-    }
-
-    return dict(outputs=outputs, rgbs=rgbs, densities=densities), aux
+    return dict(outputs=outputs, rgbs=rgbs, densities=densities), aux_mean
 
 
 def ray_t_range(
