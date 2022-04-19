@@ -188,7 +188,7 @@ class RaySamples:
         """
         probs = self.termination_probs(densities)[:, :-1]
         return {
-            k: jnp.sum(jnp.where(self.mask[:, None], jnp.sum(v * probs, axis=-1), 0.0))
+            k: jnp.mean(jnp.where(self.mask[:, None], jnp.sum(v * probs, axis=-1), 0.0))
             for k, v in aux.items()
         }
 
