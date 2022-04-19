@@ -10,6 +10,7 @@ import jax
 import jax.numpy as jnp
 
 from .model import ModelBase, sinusoidal_emb
+from .ref_nerf import RefNERFBase
 
 
 class InstantNGPModel(ModelBase):
@@ -22,6 +23,7 @@ class InstantNGPModel(ModelBase):
     bbox_min: jnp.ndarray
     bbox_max: jnp.ndarray
     table_feature_dim: int = 2
+    table_smooth: bool = False
     d_freqs: int = 4
     hidden_dim: int = 64
     density_dim: int = 16
@@ -39,6 +41,7 @@ class InstantNGPModel(ModelBase):
             bbox_min=self.bbox_min,
             bbox_max=self.bbox_max,
             feature_dim=self.table_feature_dim,
+            smooth=self.table_smooth,
         )(x)
         for _ in range(self.density_layers):
             out = nn.relu(nn.Dense(self.hidden_dim)(out))
@@ -51,6 +54,41 @@ class InstantNGPModel(ModelBase):
         return density, color, {}
 
 
+class InstantNGPRefNERFModel(RefNERFBase):
+    """
+    A NeRF model that utilizes a multilevel hash table.
+    """
+
+    table_sizes: List[int]
+    grid_sizes: List[int]
+    bbox_min: jnp.ndarray
+    bbox_max: jnp.ndarray
+    table_feature_dim: int = 2
+    d_freqs: int = 4
+    hidden_dim: int = 64
+    density_dim: int = 16
+    density_layers: int = 1
+    color_layers: int = 2
+
+    def spatial_block(self, x: jnp.ndarray) -> jnp.ndarray:
+        x = MultiresHashTableEncoding(
+            table_sizes=self.table_sizes,
+            grid_sizes=self.grid_sizes,
+            bbox_min=self.bbox_min,
+            bbox_max=self.bbox_max,
+            feature_dim=self.table_feature_dim,
+            smooth=True,
+        )(x)
+        for _ in range(self.density_layers):
+            x = nn.relu(nn.Dense(self.hidden_dim)(x))
+        return nn.Dense(self.density_dim)(x)
+
+    def directional_block(self, x: jnp.ndarray) -> jnp.ndarray:
+        for _ in range(self.color_layers):
+            x = nn.relu(nn.Dense(self.hidden_dim)(x))
+        return nn.Dense(3)(x)
+
+
 class MultiresHashTableEncoding(nn.Module):
     """
     Encode real-valued spatial coordinates using a multiresolution hash table.
@@ -61,6 +99,7 @@ class MultiresHashTableEncoding(nn.Module):
     bbox_min: jnp.ndarray
     bbox_max: jnp.ndarray
     feature_dim: int = 2
+    smooth: bool = False
 
     @nn.compact
     def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
@@ -73,6 +112,7 @@ class MultiresHashTableEncoding(nn.Module):
                     bbox_min=self.bbox_min,
                     bbox_max=self.bbox_max,
                     feature_dim=self.feature_dim,
+                    smooth=self.smooth,
                 )(x)
             )
         return jnp.concatenate(results, axis=1)
@@ -89,21 +129,31 @@ class HashTableEncoding(nn.Module):
     bbox_min: jnp.ndarray
     bbox_max: jnp.ndarray
     feature_dim: int = 2
+    smooth: bool = False
 
     @nn.compact
     def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
         """
         Compute (interpolated) table entries for the coordinates.
         """
-        fractional_index = (self.grid_size - 1) * jnp.clip(
+        frac = jnp.clip(
             (x - self.bbox_min) / (self.bbox_max - self.bbox_min), a_min=0, a_max=1
         )
+        if self.smooth:
+            # Shift by half a grid cell so that grid boundaries do not coincide
+            # at different levels, since boundaries have zero derivatives.
+            fractional_index = 0.5 + (self.grid_size - 2) * frac
+        else:
+            fractional_index = (self.grid_size - 1) * frac
         floored = jnp.floor(fractional_index)
 
         # Avoid out-of-bounds when adding 1 to floor(x) to get ceil(x).
         floored = jnp.clip(floored, a_max=self.grid_size - 2)
 
         ceil_frac = fractional_index - floored
+        if self.smooth:
+            ceil_frac = (ceil_frac ** 2) * (3 - 2 * ceil_frac)
+
         floored = floored.astype(jnp.uint32)
 
         all_coords = []

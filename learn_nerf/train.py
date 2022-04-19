@@ -144,4 +144,7 @@ class TrainLoop:
 
 
 def default_loss_weights() -> Dict[str, float]:
-    return {}
+    return dict(
+        normal_mse=3e-4,
+        neg_normal=0.1,
+    )

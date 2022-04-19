@@ -5,12 +5,13 @@ Train a NeRF model on a scene.
 import argparse
 import os
 import random
+from functools import partial
 from typing import Any, Dict, Tuple
 
 import jax
 import jax.numpy as jnp
 from learn_nerf.dataset import ModelMetadata, load_dataset
-from learn_nerf.instant_ngp import InstantNGPModel
+from learn_nerf.instant_ngp import InstantNGPModel, InstantNGPRefNERFModel
 from learn_nerf.model import ModelBase, NeRFModel
 from learn_nerf.train import TrainLoop
 
@@ -81,19 +82,24 @@ def main():
 
 def add_model_args(parser: argparse.ArgumentParser):
     parser.add_argument("--instant_ngp", action="store_true")
+    parser.add_argument("--ref_nerf", action="store_true")
 
 
 def create_model(
     args: argparse.Namespace, metadata: ModelMetadata
 ) -> Tuple[ModelBase, ModelBase, Dict[str, Any]]:
     if args.instant_ngp:
-        coarse = InstantNGPModel(
+        if args.ref_nerf:
+            model_cls = partial(InstantNGPRefNERFModel, sh_degree=4)
+        else:
+            model_cls = InstantNGPModel
+        coarse = model_cls(
             table_sizes=[2 ** 18] * 6,
             grid_sizes=[2 ** (4 + i // 2) for i in range(6)],
             bbox_min=jnp.array(metadata.bbox_min),
             bbox_max=jnp.array(metadata.bbox_max),
         )
-        fine = InstantNGPModel(
+        fine = model_cls(
             table_sizes=[2 ** 18] * 16,
             grid_sizes=[2 ** (4 + i // 2) for i in range(16)],
             bbox_min=jnp.array(metadata.bbox_min),
@@ -101,6 +107,7 @@ def create_model(
         )
         train_kwargs = dict(adam_eps=1e-15, adam_b1=0.9, adam_b2=0.99)
     else:
+        assert not args.ref_nerf, "vanilla RefNERF is currently not implemented"
         coarse = NeRFModel()
         fine = NeRFModel()
         train_kwargs = dict()
