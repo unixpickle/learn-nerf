@@ -41,7 +41,6 @@ class RefNERFBase(ModelBase):
         real_normal, spatial_out = jax.grad(spatial_fn, has_aux=True)(x)
         real_normal = real_normal / jnp.linalg.norm(real_normal, axis=-1, keepdims=True)
 
-        spatial_out = self.spatial_block(x)
         density, diffuse_color, spectral, roughness, normal, bottleneck = jnp.split(
             spatial_out, np.cumsum([1, 3, 1, 1, 3]).tolist(), axis=-1
         )
