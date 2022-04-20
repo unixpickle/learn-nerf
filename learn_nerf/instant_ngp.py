@@ -175,16 +175,32 @@ class HashTableEncoding(nn.Module):
                         )
                     )
 
-        table_size = min(self.table_size, self.grid_size ** 3)
-        table = self.param(
-            "table",
-            lambda key: 1e-4
-            * (jax.random.uniform(key, (table_size, self.feature_dim)) * 2 - 1),
-        )
+        if self.grid_size ** 3 > self.table_size:
+            table = self.param(
+                "table",
+                lambda key: 1e-4
+                * (
+                    jax.random.uniform(key, (self.table_size, self.feature_dim)) * 2 - 1
+                ),
+            )
+            all_lookup_results = jnp.concatenate(all_weights) * hash_table_lookup(
+                table, jnp.concatenate(all_coords)
+            )
+        else:
+            table = self.param(
+                "table",
+                lambda key: 1e-4
+                * (
+                    jax.random.uniform(key, (self.grid_size ** 3, self.feature_dim)) * 2
+                    - 1
+                ),
+            )
+            coords = jnp.concatenate(all_coords)
+            indices = coords[:, 0] + self.grid_size * (
+                coords[:, 1] + self.grid_size * coords[:, 2]
+            )
+            all_lookup_results = jnp.concatenate(all_weights) * table[indices]
 
-        all_lookup_results = jnp.concatenate(all_weights) * hash_table_lookup(
-            table, jnp.concatenate(all_coords)
-        )
         return jnp.sum(
             all_lookup_results.reshape([8, x.shape[0], self.feature_dim]), axis=0
         )
