@@ -36,12 +36,12 @@ class RefNERFBase(ModelBase):
     ) -> Tuple[jnp.ndarray, jnp.ndarray, Dict[str, jnp.ndarray]]:
         def spatial_fn(x):
             out = self.spatial_block(x)
-            return out[:, 0].sum(), out
+            return -out[:, 0].sum(), out
 
         real_normal, spatial_out = jax.grad(spatial_fn, has_aux=True)(x)
         real_normal = _safe_normalize(real_normal)
 
-        density, diffuse_color, spectral, roughness, normal, bottleneck = jnp.split(
+        density, diffuse_color, spectral, roughness, normal, _bottleneck = jnp.split(
             spatial_out, np.cumsum([1, 3, 1, 1, 3]).tolist(), axis=-1
         )
         density = jnp.exp(density)
@@ -55,7 +55,7 @@ class RefNERFBase(ModelBase):
             self.sh_degree, reflection, density
         )
         normal_dot = jnp.sum(-d * normal, axis=-1, keepdims=True)
-        dir_input = jnp.concatenate([bottleneck, reflection_enc, normal_dot], axis=1)
+        dir_input = jnp.concatenate([spatial_out, reflection_enc, normal_dot], axis=1)
         dir_output = self.directional_block(dir_input)
         spectral_color = nn.sigmoid(dir_output)
 
