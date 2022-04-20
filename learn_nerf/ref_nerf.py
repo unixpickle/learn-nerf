@@ -276,7 +276,7 @@ def spherical_harmonic(sh_degree: int, coords: jnp.ndarray) -> jnp.ndarray:
     return jnp.stack([x for x in out if x is not None], axis=1)
 
 
-def _safe_normalize(vs: jnp.ndarray, eps=1e-8) -> jnp.ndarray:
+def _safe_normalize(vs: jnp.ndarray, eps=1e-10) -> jnp.ndarray:
     # Using jnp.linalg.norm is not safe at exactly 0.
     # https://github.com/google/jax/issues/3058
     return vs / jnp.sqrt(jnp.sum(vs ** 2, axis=-1, keepdims=True) + eps)
