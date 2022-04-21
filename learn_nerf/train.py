@@ -1,5 +1,6 @@
 import os
 import pickle
+import sys
 from functools import partial
 from typing import Any, Callable, Dict, Tuple
 
@@ -95,6 +96,12 @@ class TrainLoop:
             values.update(
                 dict(grad_norm=tree_norm(grad), param_norm=tree_norm(state.params))
             )
+
+            if jnp.isnan(values["grad_norm"]):
+                print("NaN gradient detected!")
+                print(jax.tree_util.tree_map(lambda x: jnp.linalg.norm(x), grad))
+                sys.exit(1)
+
             return state.apply_gradients(grads=grad), values
 
         def in_place_step(key: KeyArray, batch: jnp.ndarray) -> Dict[str, jnp.ndarray]:
