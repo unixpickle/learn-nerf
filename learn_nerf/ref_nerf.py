@@ -52,7 +52,7 @@ class RefNERFBase(ModelBase):
 
         reflection = d - 2 * normal * jnp.sum(d * normal, axis=-1, keepdims=True)
         reflection_enc = integrated_directional_encoding(
-            self.sh_degree, reflection, density
+            self.sh_degree, reflection, roughness
         )
         normal_dot = jnp.sum(-d * normal, axis=-1, keepdims=True)
         dir_input = jnp.concatenate([spatial_out, reflection_enc, normal_dot], axis=1)
