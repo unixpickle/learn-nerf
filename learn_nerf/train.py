@@ -108,7 +108,7 @@ class TrainLoop:
         def in_place_step(key: KeyArray, batch: jnp.ndarray) -> Dict[str, jnp.ndarray]:
             new_state, ret_val = step_fn(self.state, key, batch)
             grad_norms = ret_val.pop("grad_norms")
-            if jnp.isnan(ret_val["grad_norm"]):
+            if str(float(ret_val["grad_norm"])) == "nan":
                 raise RuntimeError(
                     f"NaN in gradient detected. Grad norms: {grad_norms}"
                 )
