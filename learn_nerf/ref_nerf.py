@@ -9,7 +9,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from .model import ModelBase
+from .model import ModelBase, sinusoidal_emb
 
 HARMONIC_COUNTS = [1, 3, 5, 7, 9, 11, 13, 15]
 REF_NERF_OUT_DIM = 9
@@ -47,16 +47,18 @@ class RefNERFBase(ModelBase):
         density = jnp.exp(density)
         diffuse_color = nn.sigmoid(diffuse_color)
         spectral = nn.sigmoid(spectral)
-        roughness = nn.softplus(roughness)
-        normal = _safe_normalize(normal)
+        # roughness = nn.softplus(roughness)
+        # normal = _safe_normalize(normal)
 
-        reflection = d - 2 * normal * jnp.sum(d * normal, axis=-1, keepdims=True)
-        reflection_enc = integrated_directional_encoding(
-            self.sh_degree, reflection, density
+        # reflection = d - 2 * normal * jnp.sum(d * normal, axis=-1, keepdims=True)
+        # reflection_enc = integrated_directional_encoding(
+        #     self.sh_degree, reflection, density
+        # )
+        # normal_dot = jnp.sum(-d * normal, axis=-1, keepdims=True)
+        # dir_input = jnp.concatenate([spatial_out, reflection_enc, normal_dot], axis=1)
+        dir_output = self.directional_block(
+            jnp.concatenate([spatial_out, sinusoidal_emb(d, 4)], axis=1)
         )
-        normal_dot = jnp.sum(-d * normal, axis=-1, keepdims=True)
-        dir_input = jnp.concatenate([spatial_out, reflection_enc, normal_dot], axis=1)
-        dir_output = self.directional_block(dir_input)
         spectral_color = nn.sigmoid(dir_output)
 
         full_color = (
@@ -67,8 +69,8 @@ class RefNERFBase(ModelBase):
             - 1
         )
         aux_losses = dict(
-            normal_mse=jnp.sum((normal - real_normal) ** 2, axis=-1),
-            neg_normal=jnp.maximum(0.0, jnp.sum(normal * d, axis=-1)) ** 2,
+            # normal_mse=jnp.sum((normal - real_normal) ** 2, axis=-1),
+            # neg_normal=jnp.maximum(0.0, jnp.sum(normal * d, axis=-1)) ** 2,
         )
 
         return density, full_color, aux_losses
