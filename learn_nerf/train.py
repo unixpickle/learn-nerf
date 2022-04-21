@@ -97,22 +97,13 @@ class TrainLoop:
                 dict(
                     grad_norm=tree_norm(grad),
                     param_norm=tree_norm(state.params),
-                    grad_norms=jax.tree_util.tree_map(
-                        lambda x: jnp.linalg.norm(x), grad
-                    ),
                 )
             )
 
             return state.apply_gradients(grads=grad), values
 
         def in_place_step(key: KeyArray, batch: jnp.ndarray) -> Dict[str, jnp.ndarray]:
-            new_state, ret_val = step_fn(self.state, key, batch)
-            grad_norms = ret_val.pop("grad_norms")
-            if str(float(ret_val["grad_norm"])) == "nan":
-                raise RuntimeError(
-                    f"NaN in gradient detected. Grad norms: {grad_norms}"
-                )
-            self.state = new_state
+            self.state, ret_val = step_fn(self.state, key, batch)
             return ret_val
 
         return in_place_step
