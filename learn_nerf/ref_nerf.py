@@ -46,7 +46,7 @@ class RefNERFBase(ModelBase):
         )
         density = jnp.exp(density)
         diffuse_color = nn.sigmoid(diffuse_color)
-        spectral = nn.sigmoid(spectral)
+        spectral, spectral_inv = nn.sigmoid(spectral), nn.sigmoid(-spectral)
         roughness = nn.softplus(roughness)
         normal = _safe_normalize(normal)
 
@@ -61,7 +61,7 @@ class RefNERFBase(ModelBase):
 
         full_color = (
             linear_rgb_to_srgb(
-                spectral_color * spectral + diffuse_color * (1 - spectral)
+                spectral_color * spectral + diffuse_color * spectral_inv
             )
             * 2
             - 1
