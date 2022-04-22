@@ -46,7 +46,7 @@ class RefNERFBase(ModelBase):
         )
         density = jnp.exp(density)
         diffuse_color = nn.sigmoid(diffuse_color)
-        spectral, spectral_inv = nn.sigmoid(spectral), nn.sigmoid(-spectral)
+        spectral = nn.sigmoid(spectral)
         roughness = nn.softplus(roughness)
         normal = _safe_normalize(normal)
 
@@ -61,7 +61,7 @@ class RefNERFBase(ModelBase):
 
         full_color = (
             linear_rgb_to_srgb(
-                spectral_color * spectral + diffuse_color * spectral_inv
+                spectral_color * spectral + diffuse_color * (1 - spectral)
             )
             * 2
             - 1
@@ -78,8 +78,10 @@ def linear_rgb_to_srgb(colors: jnp.ndarray):
     """
     Perform Gamma compression to convert linear RGB colors to sRGB.
     """
+    # https://github.com/google/jax/issues/5798
+    safe_colors = jnp.maximum(1e-5, colors)
     return jnp.where(
-        colors <= 0.0031308, 12.92 * colors, 1.055 * (colors ** (1 / 2.4)) - 0.055
+        colors <= 0.0031308, 12.92 * colors, 1.055 * (safe_colors ** (1 / 2.4)) - 0.055
     )
 
 
