@@ -17,7 +17,7 @@ REF_NERF_OUT_DIM = 9
 
 class RefNERFBase(ModelBase):
     """
-    A NeRF model that utilizes a multilevel hash table.
+    A base class for Ref-NeRF models.
     """
 
     sh_degree: int
