@@ -199,7 +199,9 @@ class HashTableEncoding(nn.Module):
             indices = coords[:, 0] + self.grid_size * (
                 coords[:, 1] + self.grid_size * coords[:, 2]
             )
-            all_lookup_results = jnp.concatenate(all_weights) * table[indices]
+            all_lookup_results = (
+                jnp.concatenate(all_weights) * jnp.array(table)[indices]
+            )
 
         return jnp.sum(
             all_lookup_results.reshape([8, x.shape[0], self.feature_dim]), axis=0
