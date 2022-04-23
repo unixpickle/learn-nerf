@@ -13,6 +13,7 @@ import jax.numpy as jnp
 from learn_nerf.dataset import ModelMetadata, load_dataset
 from learn_nerf.instant_ngp import InstantNGPModel, InstantNGPRefNERFModel
 from learn_nerf.model import ModelBase, NeRFModel
+from learn_nerf.ref_nerf import RefNERFModel
 from learn_nerf.train import TrainLoop
 
 
@@ -107,9 +108,12 @@ def create_model(
         )
         train_kwargs = dict(adam_eps=1e-15, adam_b1=0.9, adam_b2=0.99)
     else:
-        assert not args.ref_nerf, "vanilla RefNERF is currently not implemented"
-        coarse = NeRFModel()
-        fine = NeRFModel()
+        if args.ref_nerf:
+            model_cls = partial(RefNERFModel, sh_degree=4)
+        else:
+            model_cls = NeRFModel
+        coarse = model_cls()
+        fine = model_cls()
         train_kwargs = dict()
     return coarse, fine, train_kwargs
 

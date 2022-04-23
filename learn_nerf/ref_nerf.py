@@ -9,7 +9,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from .model import ModelBase
+from .model import ModelBase, sinusoidal_emb
 
 HARMONIC_COUNTS = [1, 3, 5, 7, 9, 11, 13, 15]
 REF_NERF_OUT_DIM = 9
@@ -72,6 +72,36 @@ class RefNERFBase(ModelBase):
         )
 
         return density, full_color, aux_losses
+
+
+class RefNERFModel(RefNERFBase):
+    """
+    A Ref-NeRF model built upon the original NeRF architecture.
+    """
+
+    input_layers: int = 5
+    mid_layers: int = 4
+    hidden_dim: int = 256
+    color_layer_dim: int = 128
+    x_freqs: int = 10
+    d_freqs: int = 4
+
+    def spatial_block(self, x: jnp.ndarray) -> jnp.ndarray:
+        x_emb = sinusoidal_emb(x, self.x_freqs)
+
+        z = x_emb
+        for _ in range(self.input_layers):
+            z = nn.relu(nn.Dense(self.hidden_dim)(z))
+        z = jnp.concatenate([z, x_emb], axis=-1)
+        for i in range(self.mid_layers):
+            if i > 0:
+                z = nn.relu(z)
+            z = nn.Dense(self.hidden_dim)(z)
+        return z
+
+    def directional_block(self, x: jnp.ndarray) -> jnp.ndarray:
+        z = nn.relu(nn.Dense(self.color_layer_dim)(x))
+        return nn.Dense(3)(z)
 
 
 def linear_rgb_to_srgb(colors: jnp.ndarray):
