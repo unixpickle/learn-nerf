@@ -23,6 +23,9 @@ def main():
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--batch_size", type=int, default=4096, help="rays per batch")
     parser.add_argument(
+        "--test_batch_size", type=int, default=None, help="rays per test batch"
+    )
+    parser.add_argument(
         "--coarse_samples", type=int, default=64, help="samples per coarse ray"
     )
     parser.add_argument(
@@ -34,14 +37,26 @@ def main():
     parser.add_argument("--save_interval", type=int, default=1000)
     parser.add_argument("--save_path", type=str, default="nerf.pkl")
     parser.add_argument("--one_view", action="store_true")
+    parser.add_argument("--test_data_dir", type=str, default=None)
     add_model_args(parser)
     parser.add_argument("data_dir", type=str)
     args = parser.parse_args()
+
+    if args.test_batch_size is None:
+        args.test_batch_size = args.batch_size
 
     print("loading dataset...")
     data = load_dataset(args.data_dir)
     if args.one_view:
         data.views = data.views[:1]
+
+    if args.test_data_dir is not None:
+        print("loading test dataset...")
+        test_data = load_dataset(args.test_data_dir)
+        if args.one_view:
+            test_data.views = test_data.views[:1]
+    else:
+        test_data = None
 
     key = jax.random.PRNGKey(
         args.seed if args.seed is not None else random.randint(0, 2 ** 32 - 1)
@@ -66,15 +81,38 @@ def main():
         jnp.array(data.metadata.bbox_min),
         jnp.array(data.metadata.bbox_max),
     )
+    if test_data is not None:
+        loss_fn = jax.jit(
+            lambda key, batch, params: loop.losses(
+                key=key,
+                bbox_min=jnp.array(data.metadata.bbox_min),
+                bbox_max=jnp.array(data.metadata.bbox_max),
+                batch=batch,
+                params=params,
+            )[1]
+        )
 
     print("training...")
-    data_key, key = jax.random.split(key)
+    data_key, test_data_key, key = jax.random.split(key, 3)
     shuffle_dir = os.path.join(args.data_dir, "shuffled")
+    if test_data:
+        test_shuffle_dir = os.path.join(args.test_data_dir, "shuffled")
+        test_iterator = test_data.iterate_batches(
+            test_shuffle_dir, test_data_key, args.test_batch_size
+        )
     for i, batch in enumerate(
         data.iterate_batches(shuffle_dir, data_key, args.batch_size)
     ):
-        step_key, key = jax.random.split(key)
+        step_key, test_key, key = jax.random.split(key, 3)
+        if test_data is not None:
+            test_batch = next(test_iterator)
+            test_losses = {
+                f"test_{k}": v
+                for k, v in loss_fn(test_key, test_batch, loop.state.params).items()
+            }
         losses = step_fn(step_key, batch)
+        if test_data is not None:
+            losses.update(test_losses)
         loss_str = " ".join(f"{k}={float(v):.05}" for k, v in losses.items())
         print(f"step {i}: {loss_str}")
         if i and i % args.save_interval == 0:
