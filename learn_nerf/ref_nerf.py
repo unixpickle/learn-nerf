@@ -2,6 +2,7 @@
 Primitives and helpers for Ref-NeRF: https://arxiv.org/abs/2112.03907.
 """
 
+import math
 from typing import Dict, Tuple
 
 import flax.linen as nn
@@ -45,7 +46,11 @@ class RefNERFBase(ModelBase):
             spatial_out, np.cumsum([1, 3, 1, 1, 3]).tolist(), axis=-1
         )
         density = jnp.exp(density)
-        diffuse_color = nn.sigmoid(diffuse_color)
+
+        # Designed to initialize diffuse to 0.25, so that initial
+        # summed color is 0.5.
+        diffuse_color = nn.sigmoid(diffuse_color - math.log(3))
+
         spectral = nn.sigmoid(spectral)
         roughness = nn.softplus(roughness)
         normal = _safe_normalize(normal)
@@ -60,9 +65,7 @@ class RefNERFBase(ModelBase):
         spectral_color = nn.sigmoid(dir_output)
 
         full_color = (
-            linear_rgb_to_srgb(
-                spectral_color * spectral + diffuse_color * (1 - spectral)
-            )
+            linear_rgb_to_srgb(_leaky_clip(spectral_color * spectral + diffuse_color))
             * 2
             - 1
         )
@@ -312,3 +315,12 @@ def _safe_normalize(vs: jnp.ndarray, eps=1e-10) -> jnp.ndarray:
     # Using jnp.linalg.norm is not safe at exactly 0.
     # https://github.com/google/jax/issues/3058
     return vs / jnp.sqrt(jnp.sum(vs ** 2, axis=-1, keepdims=True) + eps)
+
+
+def _leaky_clip(x: jnp.ndarray) -> jnp.ndarray:
+    """
+    Clip x to the range [0, 1] while still allowing gradients to push it back
+    inside the bounds.
+    """
+    delta = jax.lax.stop_gradient(jnp.clip(x, 0, 1) - x)
+    return x + delta
