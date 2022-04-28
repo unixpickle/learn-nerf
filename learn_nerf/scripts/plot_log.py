@@ -15,14 +15,22 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--field", type=str, default="fine")
     parser.add_argument("--log_scale", action="store_true")
+    parser.add_argument("--smoothing", type=int, default=0)
     parser.add_argument("log_paths", nargs="+")
     args = parser.parse_args()
 
     for path in args.log_paths:
         label = label_for_path(path)
         log = read_log(path)
-        values = log[args.field]
-        plt.plot(list(range(len(values))), values, label=label)
+        ys = log[args.field]
+        xs = list(range(len(ys)))
+        if args.smoothing:
+            cut_length = (len(ys) // args.smoothing) * args.smoothing
+            xs, ys = [
+                np.mean(np.array(x[:cut_length]).reshape([-1, args.smoothing]), axis=-1)
+                for x in [xs, ys]
+            ]
+        plt.plot(xs, ys, label=label)
     if args.log_scale:
         plt.yscale("log")
     plt.legend()
