@@ -102,7 +102,7 @@ def main():
             colors = jnp.concatenate([colors, sub_colors["fine"]], axis=0)
         image = (
             (np.array(colors).reshape([args.height, args.width, 3]) + 1) * 127.5
-        ).astype(jnp.uint8)
+        ).astype(np.uint8)
         frame_arrays.append(image)
     joined = np.concatenate(frame_arrays, axis=1)
     Image.fromarray(joined).save(args.output_png)
