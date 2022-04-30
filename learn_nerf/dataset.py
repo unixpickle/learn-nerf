@@ -37,6 +37,18 @@ class CameraView:
             **kwargs,
         )
 
+    def to_json(self) -> str:
+        return json.dumps(
+            dict(
+                z=self.camera_direction,
+                origin=self.camera_origin,
+                x=self.x_axis,
+                y=self.y_axis,
+                x_fov=self.x_fov,
+                y_fov=self.y_fov,
+            )
+        )
+
     def bare_rays(self, width: int, height: int) -> jnp.ndarray:
         """
         Get all of the rays in the view in raster scan order.
