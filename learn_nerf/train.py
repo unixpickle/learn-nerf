@@ -133,8 +133,8 @@ class TrainLoop:
 
         render_out = renderer.render_rays(key, batch[:, :2])
         targets = batch[:, 2]
-        coarse_loss = jnp.mean((render_out["coarse"] - targets) ** 2)
-        fine_loss = jnp.mean((render_out["fine"] - targets) ** 2)
+        coarse_loss = jnp.mean((render_out["coarse"]["outputs"] - targets) ** 2)
+        fine_loss = jnp.mean((render_out["fine"]["outputs"] - targets) ** 2)
 
         loss_dict = dict(coarse=coarse_loss, fine=fine_loss)
         total_loss = coarse_loss + fine_loss

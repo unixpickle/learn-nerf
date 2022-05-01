@@ -57,7 +57,7 @@ def main():
         coarse_ts=args.coarse_samples,
         fine_ts=args.fine_samples,
     )
-    render_fn = jax.jit(lambda *args: renderer.render_rays(*args))
+    render_fn = jax.jit(lambda *args: renderer.render_rays(*args)["fine"]["outputs"])
 
     key = jax.random.PRNGKey(
         args.seed if args.seed is not None else random.randint(0, 2 ** 32 - 1)
@@ -73,7 +73,7 @@ def main():
             sub_batch = rays[i : i + args.batch_size]
             key, this_key = jax.random.split(key)
             sub_colors = render_fn(this_key, sub_batch)
-            colors = jnp.concatenate([colors, sub_colors["fine"]], axis=0)
+            colors = jnp.concatenate([colors, sub_colors], axis=0)
         image = (
             (np.array(colors).reshape([args.height, args.width, 3]) + 1) * 127.5
         ).astype(np.uint8)

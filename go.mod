@@ -4,7 +4,7 @@ go 1.17
 
 require (
 	github.com/unixpickle/essentials v1.3.0
-	github.com/unixpickle/model3d v0.3.2
+	github.com/unixpickle/model3d v0.3.3
 )
 
 require (

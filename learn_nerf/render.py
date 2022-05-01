@@ -40,13 +40,15 @@ class NeRFRenderer:
         self,
         key: KeyArray,
         batch: jnp.ndarray,
-    ) -> Dict[str, Union[str, jnp.ndarray]]:
+    ) -> Dict[str, Dict[str, jnp.ndarray]]:
         """
         :param key: an RNG key for sampling points along rays.
         :param batch: an [N x 2 x 3] batch of (origin, direction) rays.
-        :return: a dict with "fine" and "coarse" keys mapping to [N x 3] arrays of
-                 RGB colors. Additionally, there are "fine_aux" and "coarse_aux"
-                 keys mapping to dicts of (averaged) auxiliary losses.
+        :return: a dict with keys "fine", "coarse", "fine_aux", "coarse_aux".
+                 The former two keys store render outputs for both layers of
+                 the hierarchy (see render_rays() function for details).
+                 The "fine_aux" and "coarse_aux" keys contain dicts of
+                 (averaged) named auxiliary losses.
         """
         t_min, t_max, mask = self.t_range(batch)
 
@@ -82,8 +84,8 @@ class NeRFRenderer:
         )
 
         return dict(
-            coarse=coarse_out["outputs"],
-            fine=fine_out["outputs"],
+            coarse=coarse_out,
+            fine=fine_out,
             coarse_aux=coarse_aux,
             fine_aux=fine_aux,
         )
@@ -172,6 +174,20 @@ class RaySamples:
         return jnp.where(
             self.mask[:, None], jnp.sum(probs[..., None] * colors, axis=1), background
         )
+
+    def render_alpha(
+        self,
+        densities: jnp.ndarray,
+    ) -> jnp.ndarray:
+        """
+        Given density estimates along the rays, compute the probability that
+        each ray hits the object.
+
+        :param densities: an [N x T] batch of non-negative density outputs.
+        :return: an [N x 1] batch of alpha values.
+        """
+        probs = self.termination_probs(densities)
+        return jnp.where(self.mask[:, None], 1 - probs[:, -1:], 0.0)
 
     def average_aux_losses(
         self,
@@ -294,6 +310,8 @@ def render_rays(
                     - outputs: an [N x 3] array of RGB colors.
                     - rgbs: an [N x T x 3] array of per-point RGB outputs.
                     - densities: an [N x T] array of model density outputs.
+                    - alphas: an [N x 1] array of hit probabilities.
+                    - coords: an [N x 3] array of ray collision coordinates.
              - aux: a dict mapping loss names to (scalar) means of the losses
                     across all unmasked rays.
     """
@@ -309,9 +327,20 @@ def render_rays(
     aux = {k: v.reshape(densities.shape) for k, v in aux.items()}
 
     outputs = ts.render_rays(densities, rgbs, background)
+    alphas = ts.render_alpha(densities)
+    coords = ts.render_rays(densities, all_points, jnp.zeros([3], dtype=rgbs.dtype))
     aux_mean = ts.average_aux_losses(densities, aux)
 
-    return dict(outputs=outputs, rgbs=rgbs, densities=densities), aux_mean
+    return (
+        dict(
+            outputs=outputs,
+            rgbs=rgbs,
+            densities=densities,
+            alphas=alphas,
+            coords=coords,
+        ),
+        aux_mean,
+    )
 
 
 def ray_t_range(

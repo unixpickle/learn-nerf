@@ -35,7 +35,8 @@ def main():
     )
     parser.add_argument("--num_images", type=int, default=100)
     parser.add_argument("--size", type=int, default=512)
-    parser.add_argument("--distance", type=float, default=2.0)
+    parser.add_argument("--distance", type=float, default=1.0)
+    parser.add_argument("--max_depth", type=float, default=10.0)
     parser.add_argument("--model_path", type=str, default="nerf.pkl")
     add_model_args(parser)
     parser.add_argument("metadata_json", type=str)
@@ -63,7 +64,7 @@ def main():
         coarse_ts=args.coarse_samples,
         fine_ts=args.fine_samples,
     )
-    render_fn = jax.jit(lambda *args: renderer.render_rays(*args))
+    render_fn = jax.jit(lambda *args: renderer.render_rays(*args)["fine"])
 
     key = jax.random.PRNGKey(
         args.seed if args.seed is not None else random.randint(0, 2 ** 32 - 1)
@@ -79,9 +80,9 @@ def main():
         print(f"sampling frame {frame}...")
         z = np.random.normal(size=(3,))
         z = z / np.linalg.norm(z)
-        x = np.array([-z[1], z[0], 0.0])
+        x = np.array([z[1], -z[0], 0.0])
         x = x / np.linalg.norm(x)
-        y = -np.cross(z, x)
+        y = np.cross(z, x)
         view = CameraView(
             camera_direction=tuple(z),
             camera_origin=tuple(-z * scale * args.distance + center),
@@ -94,15 +95,42 @@ def main():
             f.write(view.to_json())
         rays = view.bare_rays(args.size, args.size)
         colors = jnp.zeros([0, 3])
+        depths = jnp.zeros([0, 1])
         for i in tqdm(range(0, rays.shape[0], args.batch_size)):
             sub_batch = rays[i : i + args.batch_size]
             key, this_key = jax.random.split(key)
-            sub_colors = render_fn(this_key, sub_batch)
-            colors = jnp.concatenate([colors, sub_colors["fine"]], axis=0)
+            results = render_fn(this_key, sub_batch)
+
+            z_depth = (
+                jnp.clip(
+                    jnp.where(
+                        results["alphas"] > 0.9,
+                        (
+                            (
+                                (results["coords"] - jnp.array(view.camera_origin))
+                                @ jnp.array(view.camera_direction)
+                            )[:, None]
+                            / (results["alphas"] + 1e-8)
+                        ),
+                        args.max_depth,
+                    ),
+                    0.0,
+                    args.max_depth,
+                )
+                / args.max_depth
+            )
+            colors = jnp.concatenate([colors, results["outputs"]], axis=0)
+            depths = jnp.concatenate([depths, z_depth], axis=0)
         image = (
             (np.array(colors).reshape([args.size, args.size, 3]) + 1) * 127.5
         ).astype(np.uint8)
         Image.fromarray(image).save(os.path.join(args.output_dir, f"{frame:05}.png"))
+        depth_image = (
+            np.array(depths).reshape([args.size, args.size]) * 0xFFFF
+        ).astype(np.uint32)
+        Image.fromarray(depth_image).save(
+            os.path.join(args.output_dir, f"{frame:05}_depth.png")
+        )
 
 
 if __name__ == "__main__":

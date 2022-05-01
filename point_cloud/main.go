@@ -1,5 +1,5 @@
 // Command point_cloud reconstructs a point cloud from a dataset with added
-// depth images.
+// depth images as exported by the render_new_dataset.py script.
 package main
 
 import (
@@ -28,7 +28,7 @@ func main() {
 	var maxPoints int
 	var dataDir string
 	var outputPath string
-	flag.Float64Var(&maxDepth, "max-depth", 5.0, "maximum depth value corresponding to white pixel")
+	flag.Float64Var(&maxDepth, "max-depth", 10.0, "maximum depth value corresponding to white pixel")
 	flag.Float64Var(&thickness, "thickness", 0.02, "radius of each point")
 	flag.Float64Var(&delta, "delta", 0.02, "marching cubes delta")
 	flag.IntVar(&maxPoints, "max-points", 50000, "maximum points to sample")
@@ -120,7 +120,7 @@ func main() {
 	mesh := model3d.MarchingCubesSearch(solid, delta, 8)
 
 	log.Println("Saving mesh...")
-	mesh.SaveMaterialOBJ(outputPath, colorFunc.TriangleColor)
+	mesh.SaveQuantizedMaterialOBJ(outputPath, 128, colorFunc.TriangleColor)
 }
 
 func ReadRGBD(depthPath, colorPath string, cb func(x, y float64, depth uint16, c color.Color)) error {
