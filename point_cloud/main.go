@@ -26,12 +26,16 @@ func main() {
 	var thickness float64
 	var delta float64
 	var maxPoints int
+	var sortDensity bool
+	var sortDensityK int
 	var dataDir string
 	var outputPath string
 	flag.Float64Var(&maxDepth, "max-depth", 10.0, "maximum depth value corresponding to white pixel")
 	flag.Float64Var(&thickness, "thickness", 0.02, "radius of each point")
 	flag.Float64Var(&delta, "delta", 0.02, "marching cubes delta")
 	flag.IntVar(&maxPoints, "max-points", 50000, "maximum points to sample")
+	flag.BoolVar(&sortDensity, "sort-density", false, "remove lowest density samples first")
+	flag.IntVar(&sortDensityK, "sort-density-k", 5, "neighbor to use for density estimate")
 	flag.StringVar(&dataDir, "data-dir", "", "data directory")
 	flag.StringVar(&outputPath, "output-path", "", "output zipped material OBJ path")
 	flag.Parse()
@@ -83,10 +87,14 @@ func main() {
 
 	if len(points) > maxPoints {
 		log.Printf("Found %d points. Reducing to %d...", len(points), maxPoints)
-		rand.Shuffle(len(points), func(i, j int) {
-			points[i], points[j] = points[j], points[i]
-			colors[i], colors[j] = colors[j], colors[i]
-		})
+		if sortDensity {
+			SortByDensity(sortDensityK, points, colors)
+		} else {
+			rand.Shuffle(len(points), func(i, j int) {
+				points[i], points[j] = points[j], points[i]
+				colors[i], colors[j] = colors[j], colors[i]
+			})
+		}
 		points = points[:maxPoints]
 		colors = colors[:maxPoints]
 	} else {
@@ -120,7 +128,7 @@ func main() {
 	mesh := model3d.MarchingCubesSearch(solid, delta, 8)
 
 	log.Println("Saving mesh...")
-	mesh.SaveQuantizedMaterialOBJ(outputPath, 128, colorFunc.TriangleColor)
+	mesh.SaveQuantizedMaterialOBJ(outputPath, 128, colorFunc.Cached().TriangleColor)
 }
 
 func ReadRGBD(depthPath, colorPath string, cb func(x, y float64, depth uint16, c color.Color)) error {
@@ -164,4 +172,16 @@ func ReadRGBD(depthPath, colorPath string, cb func(x, y float64, depth uint16, c
 	}
 
 	return nil
+}
+
+func SortByDensity(k int, points []model3d.Coord3D, colors []render3d.Color) {
+	tree := model3d.NewCoordTree(points)
+	dists := make([]float64, len(points))
+	essentials.ConcurrentMap(0, len(dists), func(i int) {
+		c := points[i]
+		dists[i] = c.SquaredDist(tree.KNN(k, c)[k-1])
+	})
+	essentials.VoodooSort(dists, func(i, j int) bool {
+		return dists[i] < dists[j]
+	}, points, colors)
 }
