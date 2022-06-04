@@ -1,8 +1,7 @@
 import os
 import pickle
-import sys
 from functools import partial
-from typing import Any, Callable, Dict, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 import jax
 import jax.numpy as jnp
@@ -32,6 +31,8 @@ class TrainLoop:
         adam_b2: float = 0.999,
         adam_eps: float = 1e-7,
         loss_weights: Dict[str, float] = None,
+        density_penalty: Optional[float] = None,
+        density_penalty_batch_size: int = 128,
     ):
         self.coarse = coarse
         self.fine = fine
@@ -40,6 +41,8 @@ class TrainLoop:
         self.loss_weights = (
             loss_weights if loss_weights is not None else default_loss_weights()
         )
+        self.density_penalty = density_penalty
+        self.density_penalty_batch_size = density_penalty_batch_size
 
         coarse_rng, fine_rng = jax.random.split(init_rng)
         example_batch = jnp.array([[0.0, 0.0, 0.0]])
@@ -131,6 +134,8 @@ class TrainLoop:
             fine_ts=self.fine_ts,
         )
 
+        key, density_key = jax.random.split(key)
+
         render_out = renderer.render_rays(key, batch[:, :2])
         targets = batch[:, 2]
         coarse_loss = jnp.mean((render_out["coarse"]["outputs"] - targets) ** 2)
@@ -145,7 +150,38 @@ class TrainLoop:
             loss_dict[f"fine_{name}"] = loss
             total_loss = total_loss + self.loss_weights[name] * loss
 
+        if self.density_penalty is not None:
+            for prefix, model in [("fine", self.fine), ("coarse", self.coarse)]:
+                penalty = self.average_density(
+                    key=density_key,
+                    model=model,
+                    params=params[prefix],
+                    bbox_min=bbox_min,
+                    bbox_max=bbox_max,
+                )
+                loss_dict[f"{prefix}_density"] = penalty
+                total_loss = total_loss + self.density_penalty * penalty
+
         return total_loss, loss_dict
+
+    def average_density(
+        self,
+        key: KeyArray,
+        model: ModelBase,
+        params: Any,
+        bbox_min: jnp.ndarray,
+        bbox_max: jnp.ndarray,
+    ) -> jnp.ndarray:
+        coords = (
+            jax.random.uniform(key, shape=(self.density_penalty_batch_size, 3))
+            * (bbox_max - bbox_min)
+            + bbox_min
+        )
+        dirs = jax.random.normal(key, shape=(self.density_penalty_batch_size, 3))
+        dirs = dirs / jnp.linalg.norm(dirs, axis=-1, keepdims=True)
+
+        densities, _, _ = model.apply(dict(params=params), coords, dirs)
+        return jnp.mean(densities)
 
 
 def default_loss_weights() -> Dict[str, float]:

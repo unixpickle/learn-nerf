@@ -34,6 +34,18 @@ def main():
         default=128,
         help="samples per fine ray (not including coarse samples)",
     )
+    parser.add_argument(
+        "--density_penalty",
+        type=float,
+        default=None,
+        help="penalty coefficient for density at random points",
+    )
+    parser.add_argument(
+        "--density_penalty_batch_size",
+        type=int,
+        default=128,
+        help="batch size for computing density penalty",
+    )
     parser.add_argument("--save_interval", type=int, default=1000)
     parser.add_argument("--save_path", type=str, default="nerf.pkl")
     parser.add_argument("--one_view", action="store_true")
@@ -72,6 +84,8 @@ def main():
         lr=args.lr,
         coarse_ts=args.coarse_samples,
         fine_ts=args.fine_samples,
+        density_penalty=args.density_penalty,
+        density_penalty_batch_size=args.density_penalty_batch_size,
         **train_kwargs,
     )
     if os.path.exists(args.save_path):
